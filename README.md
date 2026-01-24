@@ -18,24 +18,21 @@ A modern, web-based backup manager for Linux systems. Backup your remote website
 
 ### Installation
 
-1. **Clone & Setup:**
+1. **Clone & Install:**
    ```bash
-   # Clone repository (after you create one)
+   # Clone repository
    git clone <your-repo-url>
    cd web-backup-manager
 
-   # Create virtual environment
-   python3 -m venv venv
-   source venv/bin/activate
-   
-   # Install dependencies
-   pip install -r requirements.txt
+   # Run installer (sets up venv, installs dependencies)
+   chmod +x install.sh
+   ./install.sh
    ```
 
 2. **Run:**
    ```bash
-   # Run on port 5050
-   PORT=5050 python app.py
+   # Start the application
+   ./run.sh
    ```
    Access via browser: [http://localhost:5050](http://localhost:5050)
 
@@ -54,23 +51,43 @@ Linux sistemler için geliştirilmiş, modern web tabanlı yedekleme yöneticisi
 - 📊 **Panel:** Anlık istatistikler ve yedekleme geçmişi.
 
 
+Bu proje için yerel bir Git deposu oluşturulmuştur. GitHub üzerinde yayınlamak için aşağıdaki adımları izleyin:
+
+1. **GitHub'da Depo Oluşturun:**
+   - [GitHub](https://github.com) hesabınıza giriş yapın.
+   - "New Repository" butonuna tıklayın.
+   - Depo adı verin (örn: `web-backup-manager`) ve "Create repository" deyin.
+
+2. **Kodu Gönderin:**
+   Terminali açın ve proje dizininde şu komutları sırasıyla çalıştırın:
+
+   ```bash
+   # Tüm dosyaları ekle
+   git add .
+   
+   # Değişiklikleri kaydet
+   git commit -m "Eklendi: Otomatik kurulum scripti (install.sh)"
+   
+   # GitHub deposunu bağla (Daha önce yapmadıysanız)
+   # git remote add origin https://github.com/KULLANICI_ADINIZ/web-backup-manager.git
+   
+   # Kodu gönder
+   git push -u origin main
    ```
 
 ### Nasıl Çalışır?
 
-1. **Kurulum:**
+1. **Otomatik Kurulum:**
    ```bash
-   # Sanal ortamı aktif et
-   source venv/bin/activate
-   
-   # Bağımlılıkları yükle (kurulu değilse)
-   pip install -r requirements.txt
+   # İndirdikten sonra kurulumu başlatın
+   chmod +x install.sh
+   ./install.sh
    ```
 
 2. **Uygulamayı Başlatma:**
    ```bash
-   # Varsayılan port 5050 ile başlat
-   PORT=5050 python app.py
+   # Uygulamayı çalıştırın
+   ./run.sh
    ```
    Tarayıcınızda **[http://localhost:5050](http://localhost:5050)** adresine gidin.
 
