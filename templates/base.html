@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang }}">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ t('app_name') }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="bg-glow"></div>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                        </path>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    </svg>
+                </div>
+                <span>{{ t('app_name') }}</span>
+            </div>
+
+            <ul class="nav-menu">
+                <li class="nav-item {% if request.endpoint == 'index' %}active{% endif %}">
+                    <a href="/">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                        <span>{{ t('dashboard') }}</span>
+                    </a>
+                </li>
+                <li class="nav-item {% if request.endpoint == 'add_site_page' %}active{% endif %}">
+                    <a href="/add-site">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="16"></line>
+                            <line x1="8" y1="12" x2="16" y2="12"></line>
+                        </svg>
+                        <span>{{ t('add_new_site') }}</span>
+                    </a>
+                </li>
+
+                <!-- Language Switcher -->
+                <li class="nav-space"
+                    style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--glass-border);"></li>
+
+                <li class="nav-item">
+                    <a href="{{ url_for('set_language', lang_code='tr') }}"
+                        class="lang-link {% if current_lang == 'tr' %}active-lang{% endif %}">
+                        🇹🇷 Türkçe {% if current_lang == 'tr' %}✓{% endif %}
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('set_language', lang_code='en') }}"
+                        class="lang-link {% if current_lang == 'en' %}active-lang{% endif %}">
+                        🇬🇧 English {% if current_lang == 'en' %}✓{% endif %}
+                    </a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <p>{{ t('version') }}</p>
+                <p>{{ t('copyright') }}</p>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('dashboard') }} - {{ t('app_name') }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ t('dashboard') }}</h1>
+    <a href="/add-site" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="16"></line>
+            <line x1="8" y1="12" x2="16" y2="12"></line>
+        </svg>
+        {{ t('add_new_site') }}
+    </a>
+</div>
+
+<!-- Stats Cards -->
+<div class="stats-grid" id="stats-container">
+    <div class="stat-card">
+        <div class="stat-icon blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="total-sites">-</span>
+            <span class="stat-label">{{ t('total_sites') }}</span>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon green">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="successful-backups">-</span>
+            <span class="stat-label">{{ t('successful_backups') }}</span>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon red">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="failed-backups">-</span>
+            <span class="stat-label">{{ t('failed_backups') }}</span>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon purple">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path
+                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                </path>
+            </svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="total-size">-</span>
+            <span class="stat-label">{{ t('total_size') }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Sites Table -->
+<div class="card">
+    <div class="card-header">
+        <h2>{{ t('sites') }}</h2>
+        <button class="btn btn-secondary" onclick="loadSites()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+            {{ t('refresh') }}
+        </button>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>{{ t('site_name') }}</th>
+                    <th>{{ t('host') }}</th>
+                    <th>{{ t('protocol') }}</th>
+                    <th>{{ t('schedule') }}</th>
+                    <th>{{ t('last_backup') }}</th>
+                    <th>{{ t('status') }}</th>
+                    <th>{{ t('actions') }}</th>
+                </tr>
+            </thead>
+            <tbody id="sites-table-body">
+                <tr>
+                    <td colspan="7" class="loading-cell">
+                        <div class="spinner"></div>
+                        {{ t('loading') }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Recent Backups -->
+<div class="card">
+    <div class="card-header">
+        <h2>{{ t('recent_backups') }}</h2>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>{{ t('site_name') }}</th>
+                    <th>{{ t('start_time') }}</th>
+                    <th>{{ t('duration') }}</th>
+                    <th>{{ t('size') }}</th>
+                    <th>{{ t('file_count') }}</th>
+                    <th>{{ t('status') }}</th>
+                </tr>
+            </thead>
+            <tbody id="backups-table-body">
+                <tr>
+                    <td colspan="6" class="loading-cell">
+                        <div class="spinner"></div>
+                        {{ t('loading') }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal-overlay" id="confirm-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modal-title">{{ t('confirm') }}</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p id="modal-message"></p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal()">{{ t('cancel') }}</button>
+            <button class="btn btn-danger" id="modal-confirm-btn">{{ t('confirm') }}</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        loadStats();
+        loadSites();
+        loadRecentBackups();
+
+        // Refresh every 30 seconds
+        setInterval(() => {
+            loadStats();
+            loadSites();
+            loadRecentBackups();
+        }, 30000);
+    });
+
+    async function loadStats() {
+        try {
+            const response = await fetch('/api/stats');
+            const data = await response.json();
+
+            document.getElementById('total-sites').textContent = data.total_sites;
+            document.getElementById('successful-backups').textContent = data.successful_backups;
+            document.getElementById('failed-backups').textContent = data.failed_backups;
+            document.getElementById('total-size').textContent = data.total_size_human;
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+
+    async function loadSites() {
+        const tbody = document.getElementById('sites-table-body');
+
+        try {
+            const response = await fetch('/api/sites');
+            const sites = await response.json();
+
+            if (sites.length === 0) {
+                tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-cell">
+                        <div class="empty-state">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                <line x1="8" y1="21" x2="16" y2="21"></line>
+                                <line x1="12" y1="17" x2="12" y2="21"></line>
+                            </svg>
+                            <p>${t('no_sites')}</p>
+                            <a href="/add-site" class="btn btn-primary">${t('first_site')}</a>
+                        </div>
+                    </td>
+                </tr>
+            `;
+                return;
+            }
+
+            tbody.innerHTML = sites.map(site => `
+            <tr>
+                <td>
+                    <div class="site-name">
+                        <span class="status-dot ${site.is_active ? 'active' : 'inactive'}"></span>
+                        ${site.name}
+                    </div>
+                </td>
+                <td>${site.host}:${site.port}</td>
+                <td>
+                    <span class="badge ${site.protocol.toLowerCase()}">${site.protocol}</span>
+                </td>
+                <td>
+                    ${site.schedule ?
+                    t('schedule_preview', { value: site.schedule.interval_value, unit: getIntervalLabel(site.schedule.interval_type) }) :
+                    `<span class="text-muted">${t('not_set')}</span>`
+                }
+                </td>
+                <td>
+                    ${site.last_backup ?
+                    formatDate(site.last_backup.started_at) :
+                    `<span class="text-muted">${t('never')}</span>`
+                }
+                </td>
+                <td>
+                    ${site.last_backup ?
+                    `<span class="badge status-${site.last_backup.status}">${getStatusLabel(site.last_backup.status)}</span>` :
+                    `<span class="badge status-pending">${t('waiting')}</span>`
+                }
+                </td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-icon btn-success" onclick="startBackup(${site.id})" title="${t('backup_now')}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="21 15 21 21 3 21 3 15"></polyline>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </button>
+                        <button class="btn btn-icon" onclick="testConnection(${site.id})" title="${t('test_connection')}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                        </button>
+                        <a href="/edit-site/${site.id}" class="btn btn-icon" title="${t('edit')}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </a>
+                        <button class="btn btn-icon btn-danger" onclick="confirmDelete(${site.id}, '${site.name}')" title="${t('delete')}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        } catch (error) {
+            console.error('Error loading sites:', error);
+            tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="error-cell">${t('op_failed')}</td>
+            </tr>
+        `;
+        }
+    }
+
+    async function loadRecentBackups() {
+        const tbody = document.getElementById('backups-table-body');
+
+        try {
+            const [backupsResponse, sitesResponse] = await Promise.all([
+                fetch('/api/backups'),
+                fetch('/api/sites')
+            ]);
+
+            const backups = await backupsResponse.json();
+            const sites = await sitesResponse.json();
+
+            const siteMap = {};
+            sites.forEach(s => siteMap[s.id] = s.name);
+
+            if (backups.length === 0) {
+                tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="empty-cell">
+                        <span class="text-muted">${t('no_backups')}</span>
+                    </td>
+                </tr>
+            `;
+                return;
+            }
+
+            tbody.innerHTML = backups.slice(0, 10).map(backup => `
+            <tr>
+                <td>${siteMap[backup.site_id] || t('unknown')}</td>
+                <td>${formatDate(backup.started_at)}</td>
+                <td>${backup.duration || '-'}</td>
+                <td>${backup.size_human || '-'}</td>
+                <td>${backup.file_count || '-'}</td>
+                <td>
+                    <span class="badge status-${backup.status}">${getStatusLabel(backup.status)}</span>
+                    ${backup.error_message ? `<span class="error-tooltip" title="${backup.error_message}">ℹ️</span>` : ''}
+                </td>
+            </tr>
+        `).join('');
+
+        } catch (error) {
+            console.error('Error loading backups:', error);
+        }
+    }
+
+    async function testConnection(siteId) {
+        showToast(t('conn_testing'), 'info');
+
+        try {
+            const response = await fetch(`/api/sites/${siteId}/test`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                showToast(t('conn_success'), 'success');
+            } else {
+                showToast(t('conn_fail', { msg: data.message }), 'error');
+            }
+        } catch (error) {
+            showToast(t('conn_fail_generic'), 'error');
+        }
+    }
+
+    async function startBackup(siteId) {
+        showToast(t('backup_started'), 'info');
+
+        try {
+            const response = await fetch(`/api/sites/${siteId}/backup`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                showToast(t('backup_complete', { files: data.file_count, size: data.size_human }), 'success');
+                loadStats();
+                loadSites();
+                loadRecentBackups();
+            } else if (data.status === 'failed') {
+                showToast(t('backup_fail', { msg: data.error_message }), 'error');
+            }
+        } catch (error) {
+            showToast(t('op_failed'), 'error');
+        }
+    }
+
+    function confirmDelete(siteId, siteName) {
+        document.getElementById('modal-title').textContent = t('delete_confirm_title');
+        document.getElementById('modal-message').textContent = t('delete_confirm_msg', { name: siteName });
+        document.getElementById('modal-confirm-btn').onclick = () => deleteSite(siteId);
+        document.getElementById('confirm-modal').classList.add('active');
+    }
+
+    async function deleteSite(siteId) {
+        closeModal();
+
+        try {
+            const response = await fetch(`/api/sites/${siteId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                showToast(t('site_deleted'), 'success');
+                loadStats();
+                loadSites();
+            } else {
+                showToast(t('op_failed'), 'error');
+            }
+        } catch (error) {
+            showToast(t('op_failed'), 'error');
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('confirm-modal').classList.remove('active');
+    }
+
+    function getIntervalLabel(type) {
+        switch (type) {
+            case 'minutes': return t('minute_s');
+            case 'hours': return t('hour_s');
+            case 'days': return t('day_s');
+            case 'weeks': return t('week_s');
+            default: return type;
+        }
+    }
+
+    function getStatusLabel(status) {
+        switch (status) {
+            case 'success': return t('success');
+            case 'failed': return t('failed_backups');
+            case 'running': return t('running');
+            case 'pending': return t('waiting');
+            default: return status;
+        }
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        return date.toLocaleString('tr-TR');
+    }
+</script>
+{% endblock %}

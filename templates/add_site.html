@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}{% if site %}{{ t('edit_site') }}{% else %}{{ t('add_new_site') }}{% endif %} - {{ t('app_name') }}{%
+endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="breadcrumb">
+        <a href="/">{{ t('dashboard') }}</a>
+        <span>/</span>
+        <span>{% if site %}{{ t('edit_site') }}{% else %}{{ t('add_new_site') }}{% endif %}</span>
+    </div>
+</div>
+
+<div class="card form-card">
+    <div class="card-header">
+        <h2>{% if site %}{{ site.name }} - {{ t('edit') }}{% else %}{{ t('add_new_site') }}{% endif %}</h2>
+    </div>
+
+    <form id="site-form" class="site-form">
+        <input type="hidden" id="site-id" value="{{ site.id if site else '' }}">
+
+        <!-- Site Information -->
+        <div class="form-section">
+            <h3>{{ t('site_info') }}</h3>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="name">{{ t('site_name_label') }} *</label>
+                    <input type="text" id="name" name="name" required placeholder="{{ t('site_name_placeholder') }}"
+                        value="{{ site.name if site else '' }}">
+                </div>
+            </div>
+
+            <div class="form-row two-cols">
+                <div class="form-group">
+                    <label for="protocol">{{ t('protocol_label') }} *</label>
+                    <select id="protocol" name="protocol" required onchange="updatePortDefault()">
+                        <option value="SSH" {% if site and site.protocol=='SSH' %}selected{% endif %}>SSH / SFTP
+                        </option>
+                        <option value="FTP" {% if site and site.protocol=='FTP' %}selected{% endif %}>FTP</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="host">{{ t('host_label') }} *</label>
+                    <input type="text" id="host" name="host" required placeholder="{{ t('host_placeholder') }}"
+                        value="{{ site.host if site else '' }}">
+                </div>
+            </div>
+
+            <div class="form-row two-cols">
+                <div class="form-group">
+                    <label for="port">{{ t('port_label') }}</label>
+                    <input type="number" id="port" name="port" placeholder="SSH: 22, FTP: 21"
+                        value="{{ site.port if site else '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="username">{{ t('username_label') }} *</label>
+                    <input type="text" id="username" name="username" required
+                        placeholder="{{ t('username_placeholder') }}" value="{{ site.username if site else '' }}">
+                </div>
+            </div>
+        </div>
+
+        <!-- Authentication -->
+        <div class="form-section">
+            <h3>{{ t('auth_info') }}</h3>
+
+            <div class="form-row two-cols">
+                <div class="form-group">
+                    <label for="password">{{ t('password_label') }}</label>
+                    <input type="password" id="password" name="password"
+                        placeholder="{% if site and site.password %}••••••••{% else %}{{ t('password_placeholder') }}{% endif %}">
+                    {% if site and site.password %}
+                    <small class="form-help">{{ t('password_no_change') }}</small>
+                    {% endif %}
+                </div>
+
+                <div class="form-group ssh-only">
+                    <label for="ssh_key_path">{{ t('ssh_key_label') }}</label>
+                    <input type="text" id="ssh_key_path" name="ssh_key_path"
+                        placeholder="{{ t('ssh_key_placeholder') }}" value="{{ site.ssh_key_path if site else '' }}">
+                    <small class="form-help">{{ t('ssh_key_help') }}</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup Settings -->
+        <div class="form-section">
+            <h3>{{ t('backup_settings') }}</h3>
+
+            <div class="form-row two-cols">
+                <div class="form-group">
+                    <label for="remote_path">{{ t('remote_path_label') }} *</label>
+                    <input type="text" id="remote_path" name="remote_path" required placeholder="/var/www/html"
+                        value="{{ site.remote_path if site else '/' }}">
+                    <small class="form-help">{{ t('remote_path_help') }}</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="local_backup_path">{{ t('local_path_label') }} *</label>
+                    <input type="text" id="local_backup_path" name="local_backup_path" required
+                        placeholder="/backups/example-site" value="{{ site.local_backup_path if site else '' }}">
+                    <small class="form-help">{{ t('local_path_help') }}</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule -->
+        <div class="form-section">
+            <h3>{{ t('schedule_settings') }}</h3>
+
+            <div class="form-row two-cols">
+                <div class="form-group">
+                    <label for="interval_value">{{ t('frequency_label') }}</label>
+                    <input type="number" id="interval_value" name="interval_value" min="1" placeholder="1"
+                        value="{{ site.schedules[0].interval_value if site and site.schedules else '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="interval_type">{{ t('unit_label') }}</label>
+                    <select id="interval_type" name="interval_type">
+                        <option value="">{{ t('unit_none') }}</option>
+                        <option value="minutes" {% if site and site.schedules and
+                            site.schedules[0].interval_type=='minutes' %}selected{% endif %}>{{ t('unit_minutes') }}
+                        </option>
+                        <option value="hours" {% if site and site.schedules and site.schedules[0].interval_type=='hours'
+                            %}selected{% endif %}>{{ t('unit_hours') }}</option>
+                        <option value="days" {% if site and site.schedules and site.schedules[0].interval_type=='days'
+                            %}selected{% endif %}>{{ t('unit_days') }}</option>
+                        <option value="weeks" {% if site and site.schedules and site.schedules[0].interval_type=='weeks'
+                            %}selected{% endif %}>{{ t('unit_weeks') }}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="schedule-preview" id="schedule-preview">
+                <!-- Will be updated by JS -->
+            </div>
+        </div>
+
+        <!-- Form Actions -->
+        <div class="form-actions">
+            <a href="/" class="btn btn-secondary">{{ t('cancel') }}</a>
+
+            <div class="action-group">
+                <button type="button" class="btn btn-outline" onclick="testConnectionBeforeSave()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                    {{ t('test_connection') }}
+                </button>
+
+                <button type="submit" class="btn btn-primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                        <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    {% if site %}{{ t('update') }}{% else %}{{ t('save') }}{% endif %}
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        updateProtocolFields();
+        updateSchedulePreview();
+
+        document.getElementById('protocol').addEventListener('change', updateProtocolFields);
+        document.getElementById('interval_value').addEventListener('input', updateSchedulePreview);
+        document.getElementById('interval_type').addEventListener('change', updateSchedulePreview);
+    });
+
+    function updatePortDefault() {
+        const protocol = document.getElementById('protocol').value;
+        const portInput = document.getElementById('port');
+
+        if (!portInput.value) {
+            portInput.placeholder = protocol === 'SSH' ? '22' : '21';
+        }
+
+        updateProtocolFields();
+    }
+
+    function updateProtocolFields() {
+        const protocol = document.getElementById('protocol').value;
+        const sshOnlyFields = document.querySelectorAll('.ssh-only');
+
+        sshOnlyFields.forEach(field => {
+            field.style.display = protocol === 'SSH' ? 'block' : 'none';
+        });
+    }
+
+    function updateSchedulePreview() {
+        const value = document.getElementById('interval_value').value;
+        const type = document.getElementById('interval_type').value;
+        const preview = document.getElementById('schedule-preview');
+
+        if (!value || !type) {
+            preview.innerHTML = '<p class="text-muted">Zamanlama ayarlanmadı - sadece manuel yedekleme yapılabilir</p>';
+            return;
+        }
+
+        const labels = {
+            'minutes': 'dakikada',
+            'hours': 'saatte',
+            'days': 'günde',
+            'weeks': 'haftada'
+        };
+
+        preview.innerHTML = `
+        <div class="schedule-info">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span>Her <strong>${value}</strong> ${labels[type]} bir otomatik yedekleme yapılacak</span>
+        </div>
+    `;
+    }
+
+    async function testConnectionBeforeSave() {
+        const host = document.getElementById('host').value;
+        const port = document.getElementById('port').value;
+        const protocol = document.getElementById('protocol').value;
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const sshKeyPath = document.getElementById('ssh_key_path').value;
+
+        if (!host || !username) {
+            showToast('Host ve kullanıcı adı gerekli', 'error');
+            return;
+        }
+
+        showToast('Bağlantı test ediliyor...', 'info');
+
+        // For new sites, we need to create a temporary test
+        // For existing sites, we can use the API
+        const siteId = document.getElementById('site-id').value;
+
+        if (siteId) {
+            // Existing site - use API
+            try {
+                const response = await fetch(`/api/sites/${siteId}/test`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Bağlantı başarılı! ✓', 'success');
+                } else {
+                    showToast(`Bağlantı hatası: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showToast('Bağlantı test edilemedi', 'error');
+            }
+        } else {
+            // New site - show message
+            showToast('Önce siteyi kaydedin, sonra bağlantı testi yapabilirsiniz', 'warning');
+        }
+    }
+
+    document.getElementById('site-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const siteId = document.getElementById('site-id').value;
+        const isEdit = !!siteId;
+
+        const formData = {
+            name: document.getElementById('name').value,
+            host: document.getElementById('host').value,
+            port: parseInt(document.getElementById('port').value) || (document.getElementById('protocol').value === 'SSH' ? 22 : 21),
+            protocol: document.getElementById('protocol').value,
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value,
+            ssh_key_path: document.getElementById('ssh_key_path').value,
+            remote_path: document.getElementById('remote_path').value,
+            local_backup_path: document.getElementById('local_backup_path').value,
+            interval_value: document.getElementById('interval_value').value ? parseInt(document.getElementById('interval_value').value) : null,
+            interval_type: document.getElementById('interval_type').value || null
+        };
+
+        try {
+            const url = isEdit ? `/api/sites/${siteId}` : '/api/sites';
+            const method = isEdit ? 'PUT' : 'POST';
+
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
+
+            if (response.ok) {
+                showToast(isEdit ? 'Site güncellendi!' : 'Site eklendi!', 'success');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+            } else {
+                const error = await response.json();
+                showToast(`Hata: ${error.error || 'Bilinmeyen hata'}`, 'error');
+            }
+        } catch (error) {
+            showToast('İşlem başarısız', 'error');
+            console.error(error);
+        }
+    });
+</script>
+{% endblock %}
