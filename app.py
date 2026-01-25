@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
+from utils import init_encryption, encrypt_password, decrypt_password
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +28,9 @@ with app.app_context():
     db.create_all()
     # Create default backup directory
     os.makedirs(Config.DEFAULT_BACKUP_PATH, exist_ok=True)
+
+# Initialize encryption
+init_encryption(app.config['ENCRYPTION_KEY'])
 
 # Initialize scheduler
 sched.init_scheduler(app, Config.SQLALCHEMY_DATABASE_URI)
@@ -107,7 +111,7 @@ def create_site():
         port=data.get('port', 22 if data['protocol'].upper() == 'SSH' else 21),
         protocol=data['protocol'].upper(),
         username=data['username'],
-        password=data.get('password'),
+        password=encrypt_password(data.get('password')),
         ssh_key_path=data.get('ssh_key_path'),
         remote_path=data['remote_path'],
         local_backup_path=data['local_backup_path'],
@@ -157,7 +161,7 @@ def update_site(site_id):
     if 'username' in data:
         site.username = data['username']
     if 'password' in data:
-        site.password = data['password']
+        site.password = encrypt_password(data['password'])
     if 'ssh_key_path' in data:
         site.ssh_key_path = data['ssh_key_path']
     if 'remote_path' in data:
@@ -212,7 +216,7 @@ def test_connection(site_id):
             host=site.host,
             port=site.port,
             username=site.username,
-            password=site.password,
+            password=decrypt_password(site.password),
             ssh_key_path=site.ssh_key_path
         )
         
@@ -247,7 +251,7 @@ def start_backup(site_id):
             host=site.host,
             port=site.port,
             username=site.username,
-            password=site.password,
+            password=decrypt_password(site.password),
             ssh_key_path=site.ssh_key_path
         )
         
@@ -367,7 +371,7 @@ def run_scheduled_backup(site_id):
                 host=site.host,
                 port=site.port,
                 username=site.username,
-                password=site.password,
+                password=decrypt_password(site.password),
                 ssh_key_path=site.ssh_key_path
             )
             

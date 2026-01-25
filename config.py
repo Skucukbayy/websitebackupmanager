@@ -4,6 +4,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'web-backup-manager-secret-key-2024'
+    ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY') or b'Z_sCqX2D8XqX2D8XqX2D8XqX2D8XqX2D8XqX2D8XqX2=' # Default dev key, change in prod!
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{os.path.join(BASE_DIR, "backups.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
