@@ -60,6 +60,12 @@ echo "   Python ortamı: Mevcut"
 
 # 2. Virtual Environment
 echo -e "\n${YELLOW}[2/4] Sanal ortam (venv) hazırlanıyor...${NC}"
+# Eski hatalı venv varsa temizle
+if [ -d "venv" ] && [ ! -f "venv/bin/activate" ]; then
+    echo -e "${YELLOW}   Bozuk venv tespit edildi, siliniyor...${NC}"
+    rm -rf venv
+fi
+
 if [ -d "venv" ]; then
     echo "   venv zaten mevcut."
 else
@@ -122,8 +128,15 @@ fi
 echo -e "${GREEN}==============================================${NC}"
 echo -e "${GREEN}   Kurulum Tamamlandı! 🚀                     ${NC}"
 echo -e "${GREEN}==============================================${NC}"
-echo -e "Web Arayüzü: ${BLUE}http://$IP_ADDR:5050${NC}"
+echo -e "Web Arayüzü: ${BLUE}http://$IP_ADDR:5050${NC} veya ${BLUE}http://localhost:5050${NC}"
 echo -e "Durdurmak için: CTRL+C"
 echo ""
+
+# Tarayıcıyı açmayı dene
+if command -v xdg-open &> /dev/null; then
+    xdg-open http://localhost:5050 > /dev/null 2>&1 &
+elif command -v python3 &> /dev/null; then
+    python3 -m webbrowser http://localhost:5050 > /dev/null 2>&1 &
+fi
 
 python app.py
