@@ -14,6 +14,12 @@ echo -e "${BLUE}==============================================${NC}"
 # Hata durumunda durma
 set -e
 
+# Temizlik
+if [ -d "venv" ]; then
+    echo -e "${YELLOW}>> Temizlik yapılıyor (eski venv siliniyor)...${NC}"
+    rm -rf venv
+fi
+
 # Fonksiyon: Paket yükleme denemesi
 install_package() {
     PACKAGE=$1
@@ -31,89 +37,64 @@ install_package() {
         sudo apk add $PACKAGE
     else
         echo -e "${RED}Hata: Paket yöneticisi bulunamadı. Lütfen manuel olarak '$PACKAGE' yükleyin.${NC}"
-        exit 1
+        # Exit etmiyoruz, belki kullanıcı manuel halleder
     fi
 }
 
 # 1. Sistem Kontrolü
-echo -e "\n${YELLOW}[1/4] Sistem gereksinimleri kontrol ediliyor...${NC}"
+echo -e "\n${YELLOW}[1/3] Kontroller yapılıyor...${NC}"
 
-# Python kontrolü
 if ! command -v python3 &> /dev/null; then
     echo -e "${RED}Python 3 bulunamadı. Yüklenmeye çalışılıyor...${NC}"
     install_package python3
 fi
 
-# Venv modül kontrolü
-if ! python3 -c "import venv" &> /dev/null; then
-    echo -e "${YELLOW}python3-venv modülü eksik. Yükleniyor...${NC}"
-    install_package python3-venv
-fi
+# 2. Kurulum Yöntemi Belirleme (Venv veya Local)
+echo -e "\n${YELLOW}[2/3] Kurulum başlıyor...${NC}"
 
-# Pip kontrolü
-if ! command -v pip3 &> /dev/null && ! python3 -m pip --version &> /dev/null; then
-    echo -e "${YELLOW}python3-pip eksik. Yükleniyor...${NC}"
-    install_package python3-pip
-fi
+USE_VENV=true
 
-echo "   Python ortamı: Mevcut"
-
-# 2. Virtual Environment
-echo -e "\n${YELLOW}[2/4] Sanal ortam (venv) hazırlanıyor...${NC}"
-# Eski hatalı venv varsa temizle
-if [ -d "venv" ] && [ ! -f "venv/bin/activate" ]; then
-    echo -e "${YELLOW}   Bozuk venv tespit edildi, siliniyor...${NC}"
-    rm -rf venv
-fi
-
-if [ -d "venv" ]; then
-    echo "   venv zaten mevcut."
-else
-    echo "   venv oluşturuluyor..."
-    # Venv oluşturmayı dene
-    if ! python3 -m venv venv; then
-        echo -e "${RED}Hata: venv oluşturulamadı!${NC}"
-        echo "Lütfen 'python3-venv' paketinin yüklü olduğundan emin olun."
-        echo "Ubuntu/Debian için: sudo apt install python3-venv"
-        exit 1
-    fi
+# Venv oluşturmayı dene
+echo "   Sanal ortam (venv) oluşturuluyor..."
+if python3 -m venv venv > /dev/null 2>&1; then
     echo "   venv başarıyla oluşturuldu."
+    if [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+    else
+        echo -e "${YELLOW}   venv oluşturuldu ama activate dosyası yok. Local kuruluma geçiliyor.${NC}"
+        USE_VENV=false
+    fi
+else
+    echo -e "${YELLOW}   venv oluşturulamadı (python3-venv eksik olabilir).${NC}"
+    echo "   Alternatif yöntem devreye giriyor: Mevcut kullanıcı için kurulum yapılacak."
+    USE_VENV=false
 fi
 
-# Aktivasyon dosyasını kontrol et
-if [ ! -f "venv/bin/activate" ]; then
-    echo -e "${RED}Hata: venv/bin/activate dosyası bulunamadı!${NC}"
-    echo "venv oluşturma işlemi başarısız olmuş olabilir."
-    rm -rf venv
-    exit 1
-fi
-
-# 3. Bağımlılıklar
-echo -e "\n${YELLOW}[3/4] Kütüphaneler yükleniyor...${NC}"
-source venv/bin/activate
-
-# Pip güncelle
+# Kütüphaneleri yükle
+echo "   Kütüphaneler yükleniyor..."
 pip install --upgrade pip > /dev/null 2>&1
 
-# Paketleri yükle
-echo "   requirements.txt yükleniyor..."
-if ! pip install -r requirements.txt; then
-    echo -e "${RED}Hata: Kütüphaneler yüklenemedi.${NC}"
-    echo "Geliştirme paketleri eksik olabilir. Yüklenmeye çalışılıyor..."
-    install_package "python3-dev build-essential libssl-dev libffi-dev"
-    
-    echo "   Tekrar deneniyor..."
+if [ "$USE_VENV" = true ]; then
+    # Venv içine kurulum
     if ! pip install -r requirements.txt; then
-        echo -e "${RED}Yine başarısız oldu. Lütfen hata çıktısını kontrol edin.${NC}"
-        exit 1
+         echo -e "${RED}   Venv içi kurulum başarısız. Geliştirme araçları yükleniyor...${NC}"
+         install_package "python3-dev build-essential libssl-dev libffi-dev"
+         pip install -r requirements.txt
     fi
+else
+    # Local kurulum (--user)
+    echo "   pip install --user ile yükleniyor..."
+    pip install --user -r requirements.txt
+    
+    # PATH güncelleme (bazı sistemlerde ~/.local/bin PATH'te olmayabilir)
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
 # Gerekli klasörler
 mkdir -p backups instance
 
-# 4. Servis Başlatma
-echo -e "\n${YELLOW}[4/4] Uygulama başlatılıyor...${NC}"
+# 3. Başlatma
+echo -e "\n${YELLOW}[3/3] Uygulama başlatılıyor...${NC}"
 
 if [ -z "$ENCRYPTION_KEY" ]; then
     echo -e "${YELLOW}Uyarı: ENCRYPTION_KEY ayarlı değil. Varsayılan anahtar kullanılıyor.${NC}"
@@ -121,22 +102,17 @@ fi
 
 export PORT=5050
 IP_ADDR=$(hostname -I 2>/dev/null | cut -d' ' -f1)
-if [ -z "$IP_ADDR" ]; then
-    IP_ADDR="localhost"
-fi
+[ -z "$IP_ADDR" ] && IP_ADDR="localhost"
 
 echo -e "${GREEN}==============================================${NC}"
 echo -e "${GREEN}   Kurulum Tamamlandı! 🚀                     ${NC}"
 echo -e "${GREEN}==============================================${NC}"
-echo -e "Web Arayüzü: ${BLUE}http://$IP_ADDR:5050${NC} veya ${BLUE}http://localhost:5050${NC}"
-echo -e "Durdurmak için: CTRL+C"
+echo -e "Web Arayüzü: ${BLUE}http://$IP_ADDR:5050${NC}"
 echo ""
 
 # Tarayıcıyı açmayı dene
 if command -v xdg-open &> /dev/null; then
     xdg-open http://localhost:5050 > /dev/null 2>&1 &
-elif command -v python3 &> /dev/null; then
-    python3 -m webbrowser http://localhost:5050 > /dev/null 2>&1 &
 fi
 
-python app.py
+python3 app.py
