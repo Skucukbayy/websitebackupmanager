@@ -14,11 +14,31 @@ echo -e "${BLUE}==============================================${NC}"
 # Hata durumunda durma
 set -e
 
-# Temizlik
-if [ -d "venv" ]; then
-    echo -e "${YELLOW}>> Temizlik yapılıyor (eski venv siliniyor)...${NC}"
-    rm -rf venv
+# --- ADIM 0: Proje Dosyalarını Kontrol Et ---
+# Eğer script tek başına indirildiyse, projeyi clone'lamamız lazım.
+if [ ! -f "requirements.txt" ]; then
+    echo -e "\n${YELLOW}[0/3] Proje dosyaları aranıyor...${NC}"
+    
+    # Git yüklü mü?
+    if ! command -v git &> /dev/null; then
+         echo -e "${RED}Hata: Git bulunamadı.${NC}"
+         echo "Lütfen git yükleyin: sudo apt-get install git"
+         exit 1
+    fi
+
+    if [ -d "websitebackupmanager" ]; then
+        echo "   Klasör mevcut, içine giriliyor..."
+        cd websitebackupmanager
+        echo "   Güncelleniyor..."
+        git pull
+    else
+        echo "   Proje GitHub'dan indiriliyor..."
+        git clone https://github.com/Skucukbayy/websitebackupmanager.git
+        cd websitebackupmanager
+    fi
 fi
+
+# Artık proje klasörünün içindeyiz
 
 # Fonksiyon: Paket yükleme denemesi
 install_package() {
@@ -37,7 +57,6 @@ install_package() {
         sudo apk add $PACKAGE
     else
         echo -e "${RED}Hata: Paket yöneticisi bulunamadı. Lütfen manuel olarak '$PACKAGE' yükleyin.${NC}"
-        # Exit etmiyoruz, belki kullanıcı manuel halleder
     fi
 }
 
@@ -49,24 +68,25 @@ if ! command -v python3 &> /dev/null; then
     install_package python3
 fi
 
-# 2. Kurulum Yöntemi Belirleme (Venv veya Local)
+# 2. Kurulum
 echo -e "\n${YELLOW}[2/3] Kurulum başlıyor...${NC}"
 
 USE_VENV=true
 
 # Venv oluşturmayı dene
 echo "   Sanal ortam (venv) oluşturuluyor..."
+# Temizlik
+[ -d "venv" ] && rm -rf venv
+
 if python3 -m venv venv > /dev/null 2>&1; then
     echo "   venv başarıyla oluşturuldu."
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
     else
-        echo -e "${YELLOW}   venv oluşturuldu ama activate dosyası yok. Local kuruluma geçiliyor.${NC}"
         USE_VENV=false
     fi
 else
-    echo -e "${YELLOW}   venv oluşturulamadı (python3-venv eksik olabilir).${NC}"
-    echo "   Alternatif yöntem devreye giriyor: Mevcut kullanıcı için kurulum yapılacak."
+    echo -e "${YELLOW}   venv oluşturulamadı. Kullanıcı modunda (user) kurulacak.${NC}"
     USE_VENV=false
 fi
 
@@ -75,18 +95,13 @@ echo "   Kütüphaneler yükleniyor..."
 pip install --upgrade pip > /dev/null 2>&1
 
 if [ "$USE_VENV" = true ]; then
-    # Venv içine kurulum
     if ! pip install -r requirements.txt; then
-         echo -e "${RED}   Venv içi kurulum başarısız. Geliştirme araçları yükleniyor...${NC}"
+         echo -e "${RED}   Bağımlılık hatası. Geliştirme araçları yüklenip tekrar deneniyor...${NC}"
          install_package "python3-dev build-essential libssl-dev libffi-dev"
          pip install -r requirements.txt
     fi
 else
-    # Local kurulum (--user)
-    echo "   pip install --user ile yükleniyor..."
     pip install --user -r requirements.txt
-    
-    # PATH güncelleme (bazı sistemlerde ~/.local/bin PATH'te olmayabilir)
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
@@ -109,10 +124,5 @@ echo -e "${GREEN}   Kurulum Tamamlandı! 🚀                     ${NC}"
 echo -e "${GREEN}==============================================${NC}"
 echo -e "Web Arayüzü: ${BLUE}http://$IP_ADDR:5050${NC}"
 echo ""
-
-# Tarayıcıyı açmayı dene
-if command -v xdg-open &> /dev/null; then
-    xdg-open http://localhost:5050 > /dev/null 2>&1 &
-fi
 
 python3 app.py
