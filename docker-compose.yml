@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: web-backup-manager
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./backups:/app/backups
+      - ./instance:/app/instance
+    restart: unless-stopped
+    environment:
+      - FLASK_ENV=production
