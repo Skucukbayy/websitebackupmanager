@@ -156,6 +156,24 @@
         </div>
     </div>
 </div>
+</div>
+
+<!-- Error Details Modal -->
+<div class="modal-overlay" id="error-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>{{ t('error_details') }}</h3>
+            <button class="modal-close" onclick="closeErrorModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <pre id="error-modal-message"
+                style="white-space: pre-wrap; color: #ff4444; background: #2d2d2d; padding: 15px; border-radius: 5px;"></pre>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeErrorModal()">{{ t('close') }}</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -320,7 +338,14 @@
                 <td>${backup.file_count || '-'}</td>
                 <td>
                     <span class="badge status-${backup.status}">${getStatusLabel(backup.status)}</span>
-                    ${backup.error_message ? `<span class="error-tooltip" title="${backup.error_message}">ℹ️</span>` : ''}
+                    ${backup.error_message ?
+                    `<button class="btn-icon btn-sm text-danger" onclick="showError('${backup.error_message.replace(/'/g, "\\'")}')" title="{{ t('error_details') }}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="12"></line>
+                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            </svg>
+                        </button>` : ''}
                 </td>
             </tr>
         `).join('');
@@ -400,6 +425,15 @@
 
     function closeModal() {
         document.getElementById('confirm-modal').classList.remove('active');
+    }
+
+    function showError(message) {
+        document.getElementById('error-modal-message').textContent = message;
+        document.getElementById('error-modal').classList.add('active');
+    }
+
+    function closeErrorModal() {
+        document.getElementById('error-modal').classList.remove('active');
     }
 
     function getIntervalLabel(type) {
