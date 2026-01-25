@@ -339,6 +339,43 @@ def get_translations():
     lang = session.get('lang', 'tr')
     return jsonify(TRANSLATIONS.get(lang, {}))
 
+@app.route('/api/system/browse', methods=['GET'])
+def browse_filesystem():
+    """Browse directories on the server"""
+    try:
+        path = request.args.get('path', '')
+        
+        # Default to current directory if empty
+        if not path:
+            path = os.getcwd()
+            
+        if not os.path.exists(path):
+            return jsonify({'error': 'Path does not exist'}), 404
+            
+        if not os.path.isdir(path):
+            return jsonify({'error': 'Not a directory'}), 400
+            
+        # Get directories
+        directories = []
+        try:
+            with os.scandir(path) as it:
+                for entry in it:
+                    if entry.is_dir() and not entry.name.startswith('.'):
+                        directories.append(entry.name)
+        except PermissionError:
+            return jsonify({'error': 'Permission denied'}), 403
+            
+        directories.sort()
+        
+        return jsonify({
+            'current_path': os.path.abspath(path),
+            'parent_path': os.path.dirname(os.path.abspath(path)),
+            'directories': directories
+        })
+    except Exception as e:
+        logger.error(f"Browse error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 def format_size(size):
     """Format bytes to human readable size"""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
