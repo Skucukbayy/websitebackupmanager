@@ -55,9 +55,15 @@ class SSHBackupManager:
     def disconnect(self):
         """Close SSH connection"""
         if self.sftp:
-            self.sftp.close()
+            try:
+                self.sftp.close()
+            except:
+                pass
         if self.client:
-            self.client.close()
+            try:
+                self.client.close()
+            except:
+                pass
     
     def test_connection(self) -> Tuple[bool, str]:
         """Test SSH connection"""
@@ -81,6 +87,8 @@ class SSHBackupManager:
             items = self.sftp.listdir_attr(remote_path)
         except IOError as e:
             logger.error(f"Cannot list directory {remote_path}: {e}")
+            # If we can't list it, we return what we have (0)
+            # The caller should have verified existence beforehand for the root dir
             return total_files, total_bytes
         
         for item in items:
@@ -122,14 +130,35 @@ class SSHBackupManager:
             return False, message, 0, 0
         
         try:
+            # 1. Validate Remote Path
+            try:
+                self.sftp.stat(remote_path)
+            except IOError:
+                 raise Exception(f"Remote path '{remote_path}' does not exist or is not accessible")
+
+            # 2. Validate Local Path Writable
+            if os.path.exists(local_backup_path) and not os.access(local_backup_path, os.W_OK):
+                 raise Exception(f"Local backup path '{local_backup_path}' is not writable")
+            
             # Create timestamped backup folder
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_dir = os.path.join(local_backup_path, f'backup_{timestamp}')
+            
+            os.makedirs(local_backup_path, exist_ok=True)
             
             file_count, total_bytes = self.download_directory(
                 remote_path, backup_dir, progress_callback
             )
             
+            # If 0 files, check if it was really empty or if something failed silently
+            if file_count == 0:
+                try:
+                    if not self.sftp.listdir(remote_path):
+                        # Truly empty
+                        pass
+                except:
+                     pass
+
             return True, backup_dir, file_count, total_bytes
             
         except Exception as e:
@@ -168,7 +197,10 @@ class FTPBackupManager:
             try:
                 self.ftp.quit()
             except:
-                self.ftp.close()
+                try:
+                    self.ftp.close()
+                except:
+                    pass
     
     def test_connection(self) -> Tuple[bool, str]:
         """Test FTP connection"""
@@ -195,9 +227,15 @@ class FTPBackupManager:
             return total_files, total_bytes
         
         items = []
-        self.ftp.retrlines('LIST', items.append)
+        try:
+            self.ftp.retrlines('LIST', items.append)
+        except Exception as e:
+            logger.error(f"LIST failed for {remote_path}: {e}")
+            return total_files, total_bytes
         
         for item in items:
+            # Parsing LIST output is fragile, specifically across different servers
+            # Best effort logic
             parts = item.split(None, 8)
             if len(parts) < 9:
                 continue
@@ -219,7 +257,7 @@ class FTPBackupManager:
                     )
                     total_files += files
                     total_bytes += bytes_downloaded
-                    # Go back to parent directory
+                    # Go back to parent directory because download_directory does cwd
                     self.ftp.cwd(remote_path)
                 else:
                     # File - download
@@ -250,9 +288,25 @@ class FTPBackupManager:
             return False, message, 0, 0
         
         try:
+            # 1. Validate Remote Path
+            try:
+                self.ftp.cwd(remote_path)
+            except ftplib.error_perm:
+                 raise Exception(f"Remote path '{remote_path}' does not exist or permission denied")
+            
+            # Reset CWD to root for safety before starting recursion logic if needed, 
+            # or rely on download_directory to set it.
+            # download_directory expects to be able to cwd to it.
+
+            # 2. Validate Local Path Writable
+            if os.path.exists(local_backup_path) and not os.access(local_backup_path, os.W_OK):
+                 raise Exception(f"Local backup path '{local_backup_path}' is not writable")
+
             # Create timestamped backup folder
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_dir = os.path.join(local_backup_path, f'backup_{timestamp}')
+            
+            os.makedirs(local_backup_path, exist_ok=True)
             
             file_count, total_bytes = self.download_directory(
                 remote_path, backup_dir, progress_callback
