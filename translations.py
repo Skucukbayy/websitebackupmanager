@@ -111,7 +111,36 @@ TRANSLATIONS = {
         'minute': 'dakika',
         'hour': 'saat',
         'day': 'gün',
-        'week': 'hafta'
+        'week': 'hafta',
+        
+        # Auth
+        'login': 'Giriş',
+        'login_subtitle': 'Devam etmek için giriş yapın',
+        'login_button': 'Giriş Yap',
+        'login_error': 'Kullanıcı adı veya şifre hatalı',
+        'username': 'Kullanıcı Adı',
+        'password': 'Şifre',
+        'logout': 'Çıkış',
+        'change_password': 'Şifre Değiştir',
+        'change_password_subtitle': 'Yeni şifrenizi belirleyin',
+        'must_change_password': 'İlk girişte şifrenizi değiştirmeniz gerekmektedir',
+        'new_password': 'Yeni Şifre',
+        'new_password_placeholder': 'En az 4 karakter',
+        'confirm_password': 'Şifreyi Onayla',
+        'confirm_password_placeholder': 'Şifrenizi tekrar girin',
+        'save_password': 'Şifreyi Kaydet',
+        'password_too_short': 'Şifre en az 4 karakter olmalıdır',
+        'password_mismatch': 'Şifreler eşleşmiyor',
+        'password_same_as_default': 'Varsayılan şifreyi kullanamazsınız',
+        
+        # File Browser
+        'browse': 'Gözat',
+        'select_directory': 'Dizin Seç',
+        'select_this_folder': 'Bu Klasörü Seç',
+        'go_up': 'Üst Dizin',
+        'empty_directory': 'Boş dizin',
+        'close': 'Kapat',
+        'error_details': 'Hata Detayı'
     },
     'en': {
         # General
@@ -224,6 +253,35 @@ TRANSLATIONS = {
         'minute': 'minute',
         'hour': 'hour',
         'day': 'day',
-        'week': 'week'
+        'week': 'week',
+        
+        # Auth
+        'login': 'Login',
+        'login_subtitle': 'Sign in to continue',
+        'login_button': 'Sign In',
+        'login_error': 'Invalid username or password',
+        'username': 'Username',
+        'password': 'Password',
+        'logout': 'Logout',
+        'change_password': 'Change Password',
+        'change_password_subtitle': 'Set your new password',
+        'must_change_password': 'You must change your password on first login',
+        'new_password': 'New Password',
+        'new_password_placeholder': 'At least 4 characters',
+        'confirm_password': 'Confirm Password',
+        'confirm_password_placeholder': 'Enter password again',
+        'save_password': 'Save Password',
+        'password_too_short': 'Password must be at least 4 characters',
+        'password_mismatch': 'Passwords do not match',
+        'password_same_as_default': 'Cannot use default password',
+        
+        # File Browser
+        'browse': 'Browse',
+        'select_directory': 'Select Directory',
+        'select_this_folder': 'Select This Folder',
+        'go_up': 'Parent Directory',
+        'empty_directory': 'Empty directory',
+        'close': 'Close',
+        'error_details': 'Error Details'
     }
 }

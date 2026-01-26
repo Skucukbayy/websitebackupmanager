@@ -1,11 +1,12 @@
 from config import Config
-from models import db, Site, BackupSchedule, BackupHistory
+from models import db, User, Site, BackupSchedule, BackupHistory
 from backup_manager import get_backup_manager
 import scheduler as sched
 from translations import TRANSLATIONS
 import logging
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from functools import wraps
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 import os
 from utils import init_encryption, encrypt_password, decrypt_password
 
@@ -23,11 +24,19 @@ app.config.from_object(Config)
 # Initialize database
 db.init_app(app)
 
-# Create tables
+# Create tables and default admin user
 with app.app_context():
     db.create_all()
     # Create default backup directory
     os.makedirs(Config.DEFAULT_BACKUP_PATH, exist_ok=True)
+    
+    # Create default admin user if not exists
+    if not User.query.filter_by(username='admin').first():
+        admin = User(username='admin', must_change_password=True)
+        admin.set_password('admin')
+        db.session.add(admin)
+        db.session.commit()
+        logger.info("Default admin user created (admin/admin)")
 
 # Initialize encryption
 init_encryption(app.config['ENCRYPTION_KEY'])
@@ -38,6 +47,25 @@ sched.init_scheduler(app, Config.SQLALCHEMY_DATABASE_URI)
 # Valid languages
 LANGUAGES = ['tr', 'en']
 
+
+# ============== Authentication ==============
+
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        
+        # Check if password change is required
+        user = User.query.get(session['user_id'])
+        if user and user.must_change_password and request.endpoint != 'change_password':
+            return redirect(url_for('change_password'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 @app.before_request
 def before_request():
     """Set language from session or default"""
@@ -46,9 +74,10 @@ def before_request():
         browser_lang = request.accept_languages.best_match(LANGUAGES)
         session['lang'] = browser_lang if browser_lang else 'tr'
 
+
 @app.context_processor
 def inject_lang():
-    """Inject language and translation function to templates"""
+    """Inject language, translation function, and user to templates"""
     lang = session.get('lang', 'tr')
     
     def t(key, **kwargs):
@@ -57,8 +86,14 @@ def inject_lang():
         if kwargs:
             return text.format(**kwargs)
         return text
+    
+    # Get current user
+    current_user = None
+    if 'user_id' in session:
+        current_user = User.query.get(session['user_id'])
         
-    return dict(lang=lang, t=t, current_lang=lang)
+    return dict(lang=lang, t=t, current_lang=lang, current_user=current_user)
+
 
 @app.route('/set-lang/<lang_code>')
 def set_language(lang_code):
@@ -67,19 +102,92 @@ def set_language(lang_code):
         session['lang'] = lang_code
     return redirect(request.referrer or url_for('index'))
 
+
+# ============== Auth Routes ==============
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page"""
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and user.check_password(password):
+            session['user_id'] = user.id
+            logger.info(f"User logged in: {username}")
+            
+            if user.must_change_password:
+                return redirect(url_for('change_password'))
+            
+            return redirect(url_for('index'))
+        else:
+            return render_template('login.html', error=True)
+    
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    """Logout"""
+    session.pop('user_id', None)
+    return redirect(url_for('login'))
+
+
+@app.route('/change-password', methods=['GET', 'POST'])
+def change_password():
+    """Change password page"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user = User.query.get(session['user_id'])
+    if not user:
+        session.pop('user_id', None)
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        if len(new_password) < 4:
+            return render_template('change_password.html', error='password_too_short', must_change=user.must_change_password)
+        
+        if new_password != confirm_password:
+            return render_template('change_password.html', error='password_mismatch', must_change=user.must_change_password)
+        
+        if new_password == 'admin':
+            return render_template('change_password.html', error='password_same_as_default', must_change=user.must_change_password)
+        
+        user.set_password(new_password)
+        user.must_change_password = False
+        db.session.commit()
+        
+        logger.info(f"Password changed for user: {user.username}")
+        return redirect(url_for('index'))
+    
+    return render_template('change_password.html', must_change=user.must_change_password)
+
+
 # ============== Page Routes ==============
 
 @app.route('/')
+@login_required
 def index():
     """Dashboard page"""
     return render_template('index.html')
 
 @app.route('/add-site')
+@login_required
 def add_site_page():
     """Add site page"""
     return render_template('add_site.html')
 
 @app.route('/edit-site/<int:site_id>')
+@login_required
 def edit_site_page(site_id):
     """Edit site page"""
     site = Site.query.get_or_404(site_id)
