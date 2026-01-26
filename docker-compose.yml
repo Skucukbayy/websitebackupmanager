@@ -9,6 +9,8 @@ services:
     volumes:
       - ./backups:/app/backups
       - ./instance:/app/instance
+      - ./backups.db:/app/backups.db
     restart: unless-stopped
     environment:
       - FLASK_ENV=production
+      - PORT=5050

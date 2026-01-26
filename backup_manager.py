@@ -1,5 +1,6 @@
 import os
 import stat
+import socket
 import ftplib
 import paramiko
 import logging
@@ -180,16 +181,38 @@ class FTPBackupManager:
     def connect(self) -> Tuple[bool, str]:
         """Establish FTP connection"""
         try:
+            logger.info(f"FTP bağlanıyor: {self.host}:{self.port}")
             self.ftp = ftplib.FTP()
-            self.ftp.connect(self.host, self.port, timeout=30)
+            self.ftp.connect(self.host, self.port, timeout=60)  # İncreased timeout
+            logger.info(f"FTP bağlantısı kuruldu, giriş yapılıyor: {self.username}")
             self.ftp.login(self.username, self.password)
             self.ftp.set_pasv(True)
             
-            return True, "Connected successfully"
+            # Test welcome message
+            welcome = self.ftp.getwelcome()
+            logger.info(f"FTP bağlantısı başarılı: {welcome}")
+            
+            return True, f"Bağlantı başarılı: {welcome}"
         except ftplib.error_perm as e:
-            return False, f"FTP permission error: {str(e)}"
+            error_msg = f"FTP yetki hatası: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+        except socket.timeout:
+            error_msg = f"FTP bağlantı zaman aşımı - sunucu yanıt vermiyor: {self.host}:{self.port}"
+            logger.error(error_msg)
+            return False, error_msg
+        except socket.gaierror as e:
+            error_msg = f"DNS çözümleme hatası - host bulunamadı: {self.host} - {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+        except ConnectionRefusedError:
+            error_msg = f"Bağlantı reddedildi - FTP port ({self.port}) kapalı olabilir: {self.host}"
+            logger.error(error_msg)
+            return False, error_msg
         except Exception as e:
-            return False, f"FTP connection error: {str(e)}"
+            error_msg = f"FTP bağlantı hatası: {type(e).__name__}: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
     
     def disconnect(self):
         """Close FTP connection"""
@@ -206,8 +229,54 @@ class FTPBackupManager:
         """Test FTP connection"""
         success, message = self.connect()
         if success:
-            self.disconnect()
+            # Try to list root directory as additional test
+            try:
+                self.ftp.pwd()
+                self.disconnect()
+                return True, message
+            except Exception as e:
+                self.disconnect()
+                return False, f"Bağlantı başarılı ama dizin erişimi başarısız: {str(e)}"
         return success, message
+    
+    def _parse_list_line(self, line: str) -> Tuple[str, bool]:
+        """
+        Parse FTP LIST output line to extract filename and is_directory flag.
+        Handles both Unix and Windows FTP server formats.
+        Returns: (filename, is_directory) or (None, False) if parsing fails
+        """
+        try:
+            # Unix format: drwxr-xr-x 2 user group 4096 Jan 26 2024 dirname
+            parts = line.split(None, 8)
+            if len(parts) >= 9:
+                permissions = parts[0]
+                filename = parts[8]
+                if filename in ['.', '..']:
+                    return None, False
+                is_dir = permissions.startswith('d')
+                return filename, is_dir
+            
+            # Windows format: 01-26-24 08:30PM <DIR> dirname
+            # or: 01-26-24 08:30PM 1234 filename
+            parts = line.split(None)
+            if len(parts) >= 4:
+                # Check for Windows <DIR> format
+                if '<DIR>' in line:
+                    dir_idx = parts.index('<DIR>')
+                    filename = ' '.join(parts[dir_idx + 1:])
+                    if filename in ['.', '..']:
+                        return None, False
+                    return filename, True
+                else:
+                    # It's a file (has size instead of <DIR>)
+                    filename = parts[-1]
+                    if filename in ['.', '..']:
+                        return None, False
+                    return filename, False
+        except Exception as e:
+            logger.warning(f"FTP LIST satırı parse edilemedi: {line} - {e}")
+        
+        return None, False
     
     def download_directory(self, remote_path: str, local_path: str,
                           progress_callback=None) -> Tuple[int, int]:
@@ -222,42 +291,54 @@ class FTPBackupManager:
         
         try:
             self.ftp.cwd(remote_path)
-        except ftplib.error_perm:
-            logger.error(f"Cannot change to directory {remote_path}")
+            logger.info(f"FTP dizin değiştirildi: {remote_path}")
+        except ftplib.error_perm as e:
+            logger.error(f"FTP dizine erişilemiyor {remote_path}: {e}")
             return total_files, total_bytes
         
+        # Try MLSD first (more reliable), fallback to LIST
         items = []
-        try:
-            self.ftp.retrlines('LIST', items.append)
-        except Exception as e:
-            logger.error(f"LIST failed for {remote_path}: {e}")
-            return total_files, total_bytes
+        use_mlsd = False
         
-        for item in items:
-            # Parsing LIST output is fragile, specifically across different servers
-            # Best effort logic
-            parts = item.split(None, 8)
-            if len(parts) < 9:
-                continue
-                
-            permissions = parts[0]
-            filename = parts[8]
+        try:
+            mlsd_items = list(self.ftp.mlsd())
+            for name, facts in mlsd_items:
+                if name in ['.', '..']:
+                    continue
+                is_dir = facts.get('type') == 'dir'
+                items.append((name, is_dir))
+            use_mlsd = True
+            logger.info(f"MLSD kullanıldı, {len(items)} öğe bulundu")
+        except:
+            # MLSD not supported, use LIST
+            logger.info("MLSD desteklenmiyor, LIST kullanılacak")
+            lines = []
+            try:
+                self.ftp.retrlines('LIST', lines.append)
+            except Exception as e:
+                logger.error(f"LIST başarısız {remote_path}: {e}")
+                return total_files, total_bytes
             
-            if filename in ['.', '..']:
-                continue
+            for line in lines:
+                filename, is_dir = self._parse_list_line(line)
+                if filename:
+                    items.append((filename, is_dir))
             
+            logger.info(f"LIST kullanıldı, {len(items)} öğe bulundu")
+        
+        for filename, is_dir in items:
             remote_item_path = f"{remote_path}/{filename}"
             local_item_path = os.path.join(local_path, filename)
             
             try:
-                if permissions.startswith('d'):
+                if is_dir:
                     # Directory - recurse
                     files, bytes_downloaded = self.download_directory(
                         remote_item_path, local_item_path, progress_callback
                     )
                     total_files += files
                     total_bytes += bytes_downloaded
-                    # Go back to parent directory because download_directory does cwd
+                    # Go back to parent directory
                     self.ftp.cwd(remote_path)
                 else:
                     # File - download
@@ -270,9 +351,11 @@ class FTPBackupManager:
                     
                     if progress_callback:
                         progress_callback(filename, file_size)
+                    
+                    logger.debug(f"İndirildi: {filename} ({file_size} bytes)")
                         
             except Exception as e:
-                logger.error(f"Error downloading {remote_item_path}: {e}")
+                logger.error(f"FTP indirme hatası {remote_item_path}: {type(e).__name__}: {e}")
                 continue
         
         return total_files, total_bytes
@@ -283,39 +366,43 @@ class FTPBackupManager:
         Perform full backup
         Returns: (success, message, file_count, total_bytes)
         """
+        logger.info(f"FTP yedekleme başlatılıyor: {self.host}:{self.port} - {remote_path}")
+        
         success, message = self.connect()
         if not success:
+            logger.error(f"FTP bağlantısı kurulamadı: {message}")
             return False, message, 0, 0
         
         try:
             # 1. Validate Remote Path
             try:
                 self.ftp.cwd(remote_path)
-            except ftplib.error_perm:
-                 raise Exception(f"Remote path '{remote_path}' does not exist or permission denied")
+                logger.info(f"Uzak dizin doğrulandı: {remote_path}")
+            except ftplib.error_perm as e:
+                raise Exception(f"Uzak yol '{remote_path}' mevcut değil veya erişim izni yok: {e}")
             
-            # Reset CWD to root for safety before starting recursion logic if needed, 
-            # or rely on download_directory to set it.
-            # download_directory expects to be able to cwd to it.
-
             # 2. Validate Local Path Writable
             if os.path.exists(local_backup_path) and not os.access(local_backup_path, os.W_OK):
-                 raise Exception(f"Local backup path '{local_backup_path}' is not writable")
+                raise Exception(f"Yerel yedekleme yolu '{local_backup_path}' yazılabilir değil")
 
             # Create timestamped backup folder
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_dir = os.path.join(local_backup_path, f'backup_{timestamp}')
             
             os.makedirs(local_backup_path, exist_ok=True)
+            logger.info(f"Yedekleme dizini oluşturuldu: {backup_dir}")
             
             file_count, total_bytes = self.download_directory(
                 remote_path, backup_dir, progress_callback
             )
             
+            logger.info(f"FTP yedekleme tamamlandı: {file_count} dosya, {total_bytes} bytes")
             return True, backup_dir, file_count, total_bytes
             
         except Exception as e:
-            return False, f"Backup error: {str(e)}", 0, 0
+            error_msg = f"Yedekleme hatası: {type(e).__name__}: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg, 0, 0
         finally:
             self.disconnect()
 
