@@ -376,6 +376,29 @@ def browse_filesystem():
         logger.error(f"Browse error: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/system/mkdir', methods=['POST'])
+def create_directory():
+    """Create a new directory"""
+    try:
+        data = request.json
+        path = data.get('path')
+        
+        if not path:
+            return jsonify({'error': 'Path is required'}), 400
+            
+        if os.path.exists(path):
+            return jsonify({'error': 'Directory already exists'}), 400
+            
+        try:
+            os.makedirs(path)
+            return jsonify({'success': True, 'path': path})
+        except PermissionError:
+            return jsonify({'error': 'Permission denied'}), 403
+            
+    except Exception as e:
+        logger.error(f"Mkdir error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 def format_size(size):
     """Format bytes to human readable size"""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
