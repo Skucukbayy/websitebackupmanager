@@ -194,11 +194,11 @@ class FTPBackupManager:
         return success, message
     
     def _connect_ftps(self) -> Tuple[bool, str]:
-        """Try to connect with FTP over TLS (FTPS)"""
+        """Try to connect with FTP over TLS (Explicit FTPS)"""
         try:
-            logger.info(f"FTPS (TLS) bağlanıyor: {self.host}:{self.port}")
+            logger.info(f"FTPS (Explicit TLS) bağlanıyor: {self.host}:{self.port}")
             
-            # Create FTP_TLS instance with implicit TLS
+            # Create FTP_TLS instance
             import ssl
             context = ssl.create_default_context()
             context.check_hostname = False
@@ -207,11 +207,16 @@ class FTPBackupManager:
             self.ftp = ftplib.FTP_TLS(context=context)
             self.ftp.connect(self.host, self.port, timeout=60)
             
-            # Login with TLS
+            # Upgrade to TLS - this sends AUTH TLS command
+            logger.info("TLS şifreleme başlatılıyor (AUTH TLS)...")
+            self.ftp.auth()
+            
+            # Login after TLS is established
             logger.info(f"FTPS giriş yapılıyor: {self.username}")
             self.ftp.login(self.username, self.password)
             
-            # Switch to secure data connection
+            # Switch to secure data connection (PROT P)
+            logger.info("Güvenli veri bağlantısı aktif ediliyor (PROT P)...")
             self.ftp.prot_p()
             self.ftp.set_pasv(True)
             self.use_tls = True
