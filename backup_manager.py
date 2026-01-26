@@ -178,31 +178,41 @@ class FTPBackupManager:
         self.password = password
         self.ftp = None
         self.use_tls = False
+        self.ftps_error = None  # Store FTPS error for debugging
     
     def connect(self) -> Tuple[bool, str]:
-        """Establish FTP/FTPS connection with automatic TLS detection"""
-        # First try FTPS (TLS), then fallback to plain FTP
+        """Establish FTP/FTPS connection - FTPS first, then plain FTP only if server allows"""
+        # Try FTPS first
         success, message = self._connect_ftps()
         if success:
             return success, message
         
-        # If FTPS failed with specific errors, try plain FTP
-        if "TLS" not in message and "SSL" not in message and "421" not in message:
-            logger.info("FTPS başarısız, normal FTP deneniyor...")
-            return self._connect_plain_ftp()
+        # Store FTPS error for debugging
+        self.ftps_error = message
+        logger.warning(f"FTPS bağlantısı başarısız: {message}")
         
-        return success, message
+        # Only try plain FTP if FTPS failed with connection/timeout error
+        # Don't try plain FTP if server explicitly requires TLS
+        if any(x in message.lower() for x in ['421', 'tls', 'ssl', 'secure', 'cleartext']):
+            logger.error("Sunucu TLS gerektiriyor ama FTPS bağlantısı kurulamadı")
+            return False, f"FTPS bağlantısı başarısız: {message}"
+        
+        # Try plain FTP as fallback
+        logger.info("FTPS başarısız, normal FTP deneniyor...")
+        return self._connect_plain_ftp()
     
     def _connect_ftps(self) -> Tuple[bool, str]:
         """Try to connect with FTP over TLS (Explicit FTPS)"""
         try:
             logger.info(f"FTPS (Explicit TLS) bağlanıyor: {self.host}:{self.port}")
             
-            # Create SSL context
+            # Create SSL context with strong settings
             import ssl
-            context = ssl.create_default_context()
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE  # Accept self-signed certificates
+            # Set minimum TLS version to 1.2 for security
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
             
             # Custom FTP_TLS class that reuses SSL session for data connections
             # This is required by many FTP servers for security
@@ -219,9 +229,13 @@ class FTPBackupManager:
                     return conn, size
             
             self.ftp = ReusedSessionFTP_TLS(context=context)
+            self.ftp.encoding = 'utf-8'
+            
+            # Connect first
+            logger.info(f"Sunucuya bağlanılıyor: {self.host}:{self.port}")
             self.ftp.connect(self.host, self.port, timeout=60)
             
-            # Upgrade to TLS - this sends AUTH TLS command
+            # Immediately upgrade to TLS - this sends AUTH TLS command
             logger.info("TLS şifreleme başlatılıyor (AUTH TLS)...")
             self.ftp.auth()
             
@@ -245,11 +259,15 @@ class FTPBackupManager:
             return False, error_msg
         except ftplib.error_temp as e:
             error_msg = f"FTPS geçici hata: {str(e)}"
-            logger.warning(error_msg)
+            logger.error(error_msg)
+            return False, error_msg
+        except ssl.SSLError as e:
+            error_msg = f"SSL hatası: {str(e)}"
+            logger.error(error_msg)
             return False, error_msg
         except Exception as e:
             error_msg = f"FTPS bağlantı hatası: {type(e).__name__}: {str(e)}"
-            logger.warning(error_msg)
+            logger.error(error_msg)
             return False, error_msg
     
     def _connect_plain_ftp(self) -> Tuple[bool, str]:
