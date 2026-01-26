@@ -198,13 +198,27 @@ class FTPBackupManager:
         try:
             logger.info(f"FTPS (Explicit TLS) bağlanıyor: {self.host}:{self.port}")
             
-            # Create FTP_TLS instance
+            # Create SSL context
             import ssl
             context = ssl.create_default_context()
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE  # Accept self-signed certificates
             
-            self.ftp = ftplib.FTP_TLS(context=context)
+            # Custom FTP_TLS class that reuses SSL session for data connections
+            # This is required by many FTP servers for security
+            class ReusedSessionFTP_TLS(ftplib.FTP_TLS):
+                """FTP_TLS subclass that reuses the session for data connections"""
+                def ntransfercmd(self, cmd, rest=None):
+                    conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
+                    if self._prot_p:
+                        conn = self.context.wrap_socket(
+                            conn, 
+                            server_hostname=self.host,
+                            session=self.sock.session  # Reuse the control connection's session
+                        )
+                    return conn, size
+            
+            self.ftp = ReusedSessionFTP_TLS(context=context)
             self.ftp.connect(self.host, self.port, timeout=60)
             
             # Upgrade to TLS - this sends AUTH TLS command
