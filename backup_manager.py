@@ -169,7 +169,7 @@ class SSHBackupManager:
 
 
 class FTPBackupManager:
-    """Handle FTP based backups"""
+    """Handle FTP/FTPS based backups"""
     
     def __init__(self, host: str, port: int, username: str, password: str):
         self.host = host
@@ -177,24 +177,84 @@ class FTPBackupManager:
         self.username = username
         self.password = password
         self.ftp = None
+        self.use_tls = False
     
     def connect(self) -> Tuple[bool, str]:
-        """Establish FTP connection"""
+        """Establish FTP/FTPS connection with automatic TLS detection"""
+        # First try FTPS (TLS), then fallback to plain FTP
+        success, message = self._connect_ftps()
+        if success:
+            return success, message
+        
+        # If FTPS failed with specific errors, try plain FTP
+        if "TLS" not in message and "SSL" not in message and "421" not in message:
+            logger.info("FTPS başarısız, normal FTP deneniyor...")
+            return self._connect_plain_ftp()
+        
+        return success, message
+    
+    def _connect_ftps(self) -> Tuple[bool, str]:
+        """Try to connect with FTP over TLS (FTPS)"""
         try:
-            logger.info(f"FTP bağlanıyor: {self.host}:{self.port}")
+            logger.info(f"FTPS (TLS) bağlanıyor: {self.host}:{self.port}")
+            
+            # Create FTP_TLS instance with implicit TLS
+            import ssl
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE  # Accept self-signed certificates
+            
+            self.ftp = ftplib.FTP_TLS(context=context)
+            self.ftp.connect(self.host, self.port, timeout=60)
+            
+            # Login with TLS
+            logger.info(f"FTPS giriş yapılıyor: {self.username}")
+            self.ftp.login(self.username, self.password)
+            
+            # Switch to secure data connection
+            self.ftp.prot_p()
+            self.ftp.set_pasv(True)
+            self.use_tls = True
+            
+            welcome = self.ftp.getwelcome()
+            logger.info(f"FTPS bağlantısı başarılı: {welcome}")
+            
+            return True, f"Güvenli bağlantı başarılı (FTPS/TLS): {welcome}"
+        except ftplib.error_perm as e:
+            error_msg = f"FTPS yetki hatası: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+        except ftplib.error_temp as e:
+            error_msg = f"FTPS geçici hata: {str(e)}"
+            logger.warning(error_msg)
+            return False, error_msg
+        except Exception as e:
+            error_msg = f"FTPS bağlantı hatası: {type(e).__name__}: {str(e)}"
+            logger.warning(error_msg)
+            return False, error_msg
+    
+    def _connect_plain_ftp(self) -> Tuple[bool, str]:
+        """Try to connect with plain FTP (no encryption)"""
+        try:
+            logger.info(f"Normal FTP bağlanıyor: {self.host}:{self.port}")
             self.ftp = ftplib.FTP()
-            self.ftp.connect(self.host, self.port, timeout=60)  # İncreased timeout
-            logger.info(f"FTP bağlantısı kuruldu, giriş yapılıyor: {self.username}")
+            self.ftp.connect(self.host, self.port, timeout=60)
+            logger.info(f"FTP giriş yapılıyor: {self.username}")
             self.ftp.login(self.username, self.password)
             self.ftp.set_pasv(True)
+            self.use_tls = False
             
-            # Test welcome message
             welcome = self.ftp.getwelcome()
             logger.info(f"FTP bağlantısı başarılı: {welcome}")
             
             return True, f"Bağlantı başarılı: {welcome}"
         except ftplib.error_perm as e:
             error_msg = f"FTP yetki hatası: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+        except ftplib.error_temp as e:
+            # This is the TLS required error
+            error_msg = f"FTP sunucusu TLS gerektiriyor: {str(e)}"
             logger.error(error_msg)
             return False, error_msg
         except socket.timeout:
