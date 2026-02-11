@@ -150,7 +150,25 @@ TRANSLATIONS = {
         'password_changed': 'Şifre başarıyla değiştirildi',
         'system_info': 'Sistem Bilgisi',
         'logged_in_as': 'Giriş yapan',
-        'server_time': 'Sunucu Saati'
+        'server_time': 'Sunucu Saati',
+        
+        # Cloud Storage
+        'cloud_settings': 'Bulut Ayarları',
+        'backup_destination_label': 'Yedekleme Hedefi',
+        'local_disk': 'Yerel Disk',
+        'cloud_folder_label': 'Bulut Klasörü',
+        'select_cloud_folder': 'Bulut klasörü seçin',
+        'cloud_not_connected_help': 'Bu servis henüz bağlı değil. Yönetim Paneli > Bulut Ayarları sayfasından bağlantı kurun.',
+        'cloud_not_configured_help': 'Bu servis yapılandırılmamış. Yönetim Paneli > Bulut Ayarları sayfasından yapılandırın.',
+        'connected': 'Bağlı',
+        'not_connected': 'Bağlı Değil',
+        'not_configured': 'Yapılandırılmamış',
+        'connect': 'Bağlan',
+        'disconnect': 'Bağlantıyı Kes',
+        'confirm_disconnect': 'Bağlantıyı kesmek istediğinize emin misiniz?',
+        'disconnected': 'Bağlantı kesildi',
+        'credentials_saved': 'Kimlik bilgileri kaydedildi',
+        'fill_credentials': 'Client ID ve Secret alanlarını doldurun'
     },
     'en': {
         # General
@@ -302,6 +320,24 @@ TRANSLATIONS = {
         'password_changed': 'Password changed successfully',
         'system_info': 'System Information',
         'logged_in_as': 'Logged in as',
-        'server_time': 'Server Time'
+        'server_time': 'Server Time',
+        
+        # Cloud Storage
+        'cloud_settings': 'Cloud Settings',
+        'backup_destination_label': 'Backup Destination',
+        'local_disk': 'Local Disk',
+        'cloud_folder_label': 'Cloud Folder',
+        'select_cloud_folder': 'Select cloud folder',
+        'cloud_not_connected_help': 'This service is not connected. Go to Admin Panel > Cloud Settings to connect.',
+        'cloud_not_configured_help': 'This service is not configured. Go to Admin Panel > Cloud Settings to set up.',
+        'connected': 'Connected',
+        'not_connected': 'Not Connected',
+        'not_configured': 'Not Configured',
+        'connect': 'Connect',
+        'disconnect': 'Disconnect',
+        'confirm_disconnect': 'Are you sure you want to disconnect?',
+        'disconnected': 'Disconnected',
+        'credentials_saved': 'Credentials saved',
+        'fill_credentials': 'Please fill Client ID and Secret fields'
     }
 }

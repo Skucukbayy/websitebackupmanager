@@ -100,9 +100,26 @@ endblock %}
                 </div>
 
                 <div class="form-group">
+                    <label for="backup_destination">{{ t('backup_destination_label') }}</label>
+                    <select id="backup_destination" name="backup_destination" onchange="onDestinationChange()">
+                        <option value="local" {% if not site or (site and site.backup_destination=='local' )
+                            %}selected{% endif %}>💾 {{ t('local_disk') }}</option>
+                        <option value="google_drive" {% if site and site.backup_destination=='google_drive' %}selected{%
+                            endif %}>📁 Google Drive</option>
+                        <option value="onedrive" {% if site and site.backup_destination=='onedrive' %}selected{% endif
+                            %}>☁️ OneDrive</option>
+                        <option value="dropbox" {% if site and site.backup_destination=='dropbox' %}selected{% endif %}>
+                            📦 Dropbox</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Local Path (shown when local selected) -->
+            <div class="form-row" id="local-path-row">
+                <div class="form-group">
                     <label for="local_backup_path">{{ t('local_path_label') }} *</label>
                     <div class="input-group">
-                        <input type="text" id="local_backup_path" name="local_backup_path" required
+                        <input type="text" id="local_backup_path" name="local_backup_path"
                             placeholder="/backups/example-site" value="{{ site.local_backup_path if site else '' }}">
                         <button type="button" class="btn btn-secondary" onclick="openFileBrowser()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20"
@@ -116,6 +133,30 @@ endblock %}
                         </button>
                     </div>
                     <small class="form-help">{{ t('local_path_help') }}</small>
+                </div>
+            </div>
+
+            <!-- Cloud Folder (shown when cloud selected) -->
+            <div class="form-row" id="cloud-path-row" style="display:none;">
+                <div class="form-group">
+                    <label for="cloud_folder_display">{{ t('cloud_folder_label') }}</label>
+                    <div class="input-group">
+                        <input type="text" id="cloud_folder_display" readonly
+                            placeholder="{{ t('select_cloud_folder') }}"
+                            value="{{ site.cloud_folder_path if site and site.cloud_folder_path else '' }}">
+                        <input type="hidden" id="cloud_folder_id"
+                            value="{{ site.cloud_folder_id if site and site.cloud_folder_id else '' }}">
+                        <button type="button" class="btn btn-secondary" onclick="openCloudBrowser()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20"
+                                height="20">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z">
+                                </path>
+                            </svg>
+                            {{ t('browse') }}
+                        </button>
+                    </div>
+                    <small class="form-help" id="cloud-not-connected" style="display:none; color:#ff5252;">{{
+                        t('cloud_not_connected_help') }}</small>
                 </div>
             </div>
         </div>
@@ -204,6 +245,24 @@ endblock %}
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeFileBrowser()">{{ t('cancel') }}</button>
             <button class="btn btn-primary" onclick="selectCurrentDirectory()">{{ t('select_this_folder') }}</button>
+        </div>
+    </div>
+</div>
+
+<!-- Cloud Folder Browser Modal -->
+<div class="modal-overlay" id="cloud-browser-modal">
+    <div class="modal" style="max-width: 600px; width: 90%;">
+        <div class="modal-header">
+            <h3>{{ t('select_cloud_folder') }}</h3>
+            <button class="modal-close" onclick="closeCloudBrowser()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="browser-path" id="cloud-browser-path">Loading...</div>
+            <div class="browser-list" id="cloud-browser-list"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCloudBrowser()">{{ t('cancel') }}</button>
+            <button class="btn btn-primary" onclick="selectCloudFolder()">{{ t('select_this_folder') }}</button>
         </div>
     </div>
 </div>
@@ -325,6 +384,9 @@ endblock %}
             ssh_key_path: document.getElementById('ssh_key_path').value,
             remote_path: document.getElementById('remote_path').value,
             local_backup_path: document.getElementById('local_backup_path').value,
+            backup_destination: document.getElementById('backup_destination').value,
+            cloud_folder_id: document.getElementById('cloud_folder_id').value || null,
+            cloud_folder_path: document.getElementById('cloud_folder_display').value || null,
             interval_value: document.getElementById('interval_value').value ? parseInt(document.getElementById('interval_value').value) : null,
             interval_type: document.getElementById('interval_type').value || null
         };
@@ -463,6 +525,141 @@ endblock %}
     function selectCurrentDirectory() {
         document.getElementById('local_backup_path').value = currentBrowserPath;
         closeFileBrowser();
+    }
+
+    // Cloud destination logic
+    let cloudStatus = {};
+    let cloudBrowserStack = [];
+    let currentCloudFolderId = null;
+    let currentCloudFolderName = '';
+
+    // Load cloud status on page load
+    (async function () {
+        try {
+            const resp = await fetch('/api/cloud/status');
+            cloudStatus = await resp.json();
+            onDestinationChange();
+        } catch (e) { }
+    })();
+
+    function onDestinationChange() {
+        const dest = document.getElementById('backup_destination').value;
+        const localRow = document.getElementById('local-path-row');
+        const cloudRow = document.getElementById('cloud-path-row');
+        const notConnected = document.getElementById('cloud-not-connected');
+
+        if (dest === 'local') {
+            localRow.style.display = 'block';
+            cloudRow.style.display = 'none';
+        } else {
+            localRow.style.display = 'none';
+            cloudRow.style.display = 'block';
+
+            // Check if connected
+            const status = cloudStatus[dest];
+            if (status && status.is_connected) {
+                notConnected.style.display = 'none';
+            } else if (status && status.has_credentials) {
+                notConnected.style.display = 'block';
+                notConnected.textContent = t('cloud_not_connected_help');
+            } else {
+                notConnected.style.display = 'block';
+                notConnected.textContent = t('cloud_not_configured_help');
+            }
+        }
+    }
+
+    function openCloudBrowser() {
+        const dest = document.getElementById('backup_destination').value;
+        if (!cloudStatus[dest] || !cloudStatus[dest].is_connected) {
+            showToast(t('cloud_not_connected_help'), 'error');
+            return;
+        }
+        cloudBrowserStack = [];
+        currentCloudFolderId = null;
+        currentCloudFolderName = 'Root';
+        loadCloudFolders(null);
+        document.getElementById('cloud-browser-modal').classList.add('active');
+    }
+
+    function closeCloudBrowser() {
+        document.getElementById('cloud-browser-modal').classList.remove('active');
+    }
+
+    async function loadCloudFolders(folderId) {
+        const dest = document.getElementById('backup_destination').value;
+        const list = document.getElementById('cloud-browser-list');
+        const pathDisplay = document.getElementById('cloud-browser-path');
+
+        list.innerHTML = '<div style="padding: 20px; text-align: center;"><div class="spinner"></div></div>';
+
+        try {
+            const url = folderId
+                ? `/api/cloud/${dest}/folders?folder_id=${encodeURIComponent(folderId)}`
+                : `/api/cloud/${dest}/folders`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+
+            if (!resp.ok) throw new Error(data.error);
+
+            currentCloudFolderId = folderId;
+            pathDisplay.textContent = currentCloudFolderName;
+
+            let html = '';
+
+            // Parent (go up)
+            if (cloudBrowserStack.length > 0) {
+                html += `
+                    <div class="browser-item" onclick="cloudGoUp()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="9 14 4 9 9 4"></polyline>
+                            <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+                        </svg>
+                        <span>.. (${t('go_up')})</span>
+                    </div>
+                `;
+            }
+
+            data.folders.forEach(folder => {
+                html += `
+                    <div class="browser-item folder" onclick="cloudNavigate('${folder.id.replace(/'/g, "\\\'")}', '${folder.name.replace(/'/g, "\\\'")}')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        <span>${folder.name}</span>
+                    </div>
+                `;
+            });
+
+            if (data.folders.length === 0 && cloudBrowserStack.length === 0) {
+                html += `<div style="padding: 15px; text-align: center; color: #999;">${t('empty_directory')}</div>`;
+            }
+
+            list.innerHTML = html;
+        } catch (e) {
+            list.innerHTML = `<div style="padding: 15px; color: #ff5555;">Error: ${e.message}</div>`;
+        }
+    }
+
+    function cloudNavigate(folderId, folderName) {
+        cloudBrowserStack.push({ id: currentCloudFolderId, name: currentCloudFolderName });
+        currentCloudFolderName = folderName;
+        loadCloudFolders(folderId);
+    }
+
+    function cloudGoUp() {
+        if (cloudBrowserStack.length > 0) {
+            const parent = cloudBrowserStack.pop();
+            currentCloudFolderName = parent.name;
+            loadCloudFolders(parent.id);
+        }
+    }
+
+    function selectCloudFolder() {
+        document.getElementById('cloud_folder_id').value = currentCloudFolderId || '';
+        const pathParts = cloudBrowserStack.map(s => s.name).concat([currentCloudFolderName]);
+        document.getElementById('cloud_folder_display').value = '/' + pathParts.filter(p => p !== 'Root').join('/');
+        closeCloudBrowser();
     }
 </script>
 {% endblock %}

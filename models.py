@@ -36,6 +36,9 @@ class Site(db.Model):
     ssh_key_path = db.Column(db.String(500), nullable=True)
     remote_path = db.Column(db.String(500), nullable=False, default='/')
     local_backup_path = db.Column(db.String(500), nullable=False)
+    backup_destination = db.Column(db.String(20), default='local')  # local, google_drive, onedrive, dropbox
+    cloud_folder_id = db.Column(db.String(500), nullable=True)
+    cloud_folder_path = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime, default=get_now_for_db)
     updated_at = db.Column(db.DateTime, default=get_now_for_db, onupdate=get_now_for_db)
     is_active = db.Column(db.Boolean, default=True)
@@ -56,6 +59,9 @@ class Site(db.Model):
             'has_ssh_key': bool(self.ssh_key_path),
             'remote_path': self.remote_path,
             'local_backup_path': self.local_backup_path,
+            'backup_destination': self.backup_destination or 'local',
+            'cloud_folder_id': self.cloud_folder_id,
+            'cloud_folder_path': self.cloud_folder_path,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'is_active': self.is_active,
@@ -110,28 +116,51 @@ class BackupHistory(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
-            'site_id': self.site_id,
+            'site_name': self.site.name if self.site else 'Unknown',
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'status': self.status,
             'size_bytes': self.size_bytes,
-            'size_human': self.get_size_human(),
             'file_count': self.file_count,
             'error_message': self.error_message,
             'backup_path': self.backup_path,
-            'duration': self.get_duration()
+            'duration': self.format_duration()
         }
     
-    def get_size_human(self):
-        size = self.size_bytes
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if size < 1024:
-                return f"{size:.2f} {unit}"
-            size /= 1024
-        return f"{size:.2f} PB"
+    def format_duration(self):
+        if not self.started_at or not self.completed_at:
+            return '-'
+        delta = self.completed_at - self.started_at
+        seconds = int(delta.total_seconds())
+        if seconds < 60:
+            return f"{seconds}s"
+        minutes = seconds // 60
+        secs = seconds % 60
+        return f"{minutes}m {secs}s"
+
+
+class CloudCredential(db.Model):
+    """Cloud storage OAuth2 credentials"""
+    __tablename__ = 'cloud_credentials'
     
-    def get_duration(self):
-        if self.started_at and self.completed_at:
-            delta = self.completed_at - self.started_at
-            return str(delta).split('.')[0]
-        return None
+    id = db.Column(db.Integer, primary_key=True)
+    provider = db.Column(db.String(20), unique=True, nullable=False)  # google_drive, onedrive, dropbox
+    client_id = db.Column(db.String(500), nullable=True)
+    client_secret = db.Column(db.String(500), nullable=True)
+    access_token = db.Column(db.Text, nullable=True)
+    refresh_token = db.Column(db.Text, nullable=True)
+    token_expiry = db.Column(db.DateTime, nullable=True)
+    is_connected = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=get_now_for_db)
+    updated_at = db.Column(db.DateTime, default=get_now_for_db, onupdate=get_now_for_db)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'provider': self.provider,
+            'has_client_id': bool(self.client_id),
+            'has_client_secret': bool(self.client_secret),
+            'is_connected': self.is_connected,
+            'token_expiry': self.token_expiry.isoformat() if self.token_expiry else None
+        }
+

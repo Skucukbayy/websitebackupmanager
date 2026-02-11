@@ -1,5 +1,5 @@
 from config import Config
-from models import db, User, Site, BackupSchedule, BackupHistory
+from models import db, User, Site, BackupSchedule, BackupHistory, CloudCredential
 from backup_manager import get_backup_manager
 import scheduler as sched
 from translations import TRANSLATIONS
@@ -224,6 +224,9 @@ def create_site():
         ssh_key_path=data.get('ssh_key_path'),
         remote_path=data['remote_path'],
         local_backup_path=data['local_backup_path'],
+        backup_destination=data.get('backup_destination', 'local'),
+        cloud_folder_id=data.get('cloud_folder_id'),
+        cloud_folder_path=data.get('cloud_folder_path'),
         is_active=True
     )
     
@@ -277,6 +280,12 @@ def update_site(site_id):
         site.remote_path = data['remote_path']
     if 'local_backup_path' in data:
         site.local_backup_path = data['local_backup_path']
+    if 'backup_destination' in data:
+        site.backup_destination = data['backup_destination']
+    if 'cloud_folder_id' in data:
+        site.cloud_folder_id = data['cloud_folder_id']
+    if 'cloud_folder_path' in data:
+        site.cloud_folder_path = data['cloud_folder_path']
     if 'is_active' in data:
         site.is_active = data['is_active']
     
@@ -374,6 +383,9 @@ def start_backup(site_id):
             history.backup_path = result
             history.file_count = file_count
             history.size_bytes = total_bytes
+            
+            # Upload to cloud if configured
+            _upload_to_cloud(site, result)
         else:
             history.status = 'failed'
             history.error_message = result
@@ -508,6 +520,38 @@ def create_directory():
         logger.error(f"Mkdir error: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _upload_to_cloud(site, backup_path):
+    """Upload a backup file to cloud storage if site is configured for it"""
+    if not site.backup_destination or site.backup_destination == 'local':
+        return
+    
+    provider = site.backup_destination
+    cred = CloudCredential.query.filter_by(provider=provider).first()
+    if not cred or not cred.is_connected:
+        logger.warning(f"Cloud upload skipped for {site.name}: {provider} not connected")
+        return
+    
+    try:
+        from cloud_storage import get_cloud_manager
+        redirect_uri = ''  # Not needed for upload
+        manager = get_cloud_manager(provider, cred.client_id, cred.client_secret, redirect_uri)
+        manager.set_tokens(cred.access_token, cred.refresh_token, cred.token_expiry)
+        
+        folder_id = site.cloud_folder_id  # Can be None (uploads to root)
+        filename = os.path.basename(backup_path)
+        
+        result = manager.upload_file(backup_path, folder_id, filename)
+        logger.info(f"Cloud upload completed for {site.name} to {provider}: {result.get('name', filename)}")
+        
+        # Update tokens if refreshed
+        if manager.access_token != cred.access_token:
+            cred.access_token = manager.access_token
+            if manager.token_expiry:
+                cred.token_expiry = manager.token_expiry
+            db.session.commit()
+    except Exception as e:
+        logger.error(f"Cloud upload failed for {site.name} to {provider}: {e}")
+
 def format_size(size):
     """Format bytes to human readable size"""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -573,6 +617,176 @@ def get_server_time():
         'iso': now.isoformat()
     })
 
+
+# ========== Cloud Storage Routes ==========
+
+@app.route('/admin/cloud')
+@login_required
+def cloud_settings():
+    """Cloud storage settings page"""
+    credentials = {}
+    for provider in ['google_drive', 'onedrive', 'dropbox']:
+        cred = CloudCredential.query.filter_by(provider=provider).first()
+        if cred:
+            credentials[provider] = cred.to_dict()
+        else:
+            credentials[provider] = {'provider': provider, 'has_client_id': False, 'has_client_secret': False, 'is_connected': False}
+    return render_template('cloud_settings.html', credentials=credentials)
+
+
+@app.route('/api/admin/cloud/save', methods=['POST'])
+@login_required
+def save_cloud_credentials():
+    """Save cloud provider client ID and secret"""
+    data = request.json
+    provider = data.get('provider')
+    
+    if provider not in ['google_drive', 'onedrive', 'dropbox']:
+        return jsonify({'success': False, 'message': 'Invalid provider'}), 400
+    
+    cred = CloudCredential.query.filter_by(provider=provider).first()
+    if not cred:
+        cred = CloudCredential(provider=provider)
+        db.session.add(cred)
+    
+    if data.get('client_id'):
+        cred.client_id = data['client_id']
+    if data.get('client_secret'):
+        cred.client_secret = data['client_secret']
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'credentials_saved'})
+
+
+@app.route('/api/cloud/<provider>/auth')
+@login_required
+def cloud_auth_url(provider):
+    """Get OAuth authorization URL for a cloud provider"""
+    if provider not in ['google_drive', 'onedrive', 'dropbox']:
+        return jsonify({'error': 'Invalid provider'}), 400
+    
+    cred = CloudCredential.query.filter_by(provider=provider).first()
+    if not cred or not cred.client_id or not cred.client_secret:
+        return jsonify({'error': 'Cloud credentials not configured'}), 400
+    
+    from cloud_storage import get_cloud_manager
+    redirect_uri = request.host_url.rstrip('/') + f'/oauth/callback/{provider}'
+    manager = get_cloud_manager(provider, cred.client_id, cred.client_secret, redirect_uri)
+    
+    auth_url = manager.get_auth_url(state=provider)
+    return jsonify({'auth_url': auth_url})
+
+
+@app.route('/oauth/callback/<provider>')
+def cloud_oauth_callback(provider):
+    """Handle OAuth callback from cloud provider"""
+    if provider not in ['google_drive', 'onedrive', 'dropbox']:
+        return 'Invalid provider', 400
+    
+    code = request.args.get('code')
+    error = request.args.get('error')
+    
+    if error:
+        return render_template('cloud_callback.html', success=False, error=error, provider=provider)
+    
+    if not code:
+        return render_template('cloud_callback.html', success=False, error='No authorization code received', provider=provider)
+    
+    cred = CloudCredential.query.filter_by(provider=provider).first()
+    if not cred:
+        return render_template('cloud_callback.html', success=False, error='Cloud credentials not found', provider=provider)
+    
+    try:
+        from cloud_storage import get_cloud_manager
+        redirect_uri = request.host_url.rstrip('/') + f'/oauth/callback/{provider}'
+        manager = get_cloud_manager(provider, cred.client_id, cred.client_secret, redirect_uri)
+        
+        tokens = manager.handle_callback(code)
+        
+        cred.access_token = tokens['access_token']
+        if tokens.get('refresh_token'):
+            cred.refresh_token = tokens['refresh_token']
+        if tokens.get('token_expiry'):
+            from datetime import datetime as dt
+            cred.token_expiry = dt.fromisoformat(tokens['token_expiry'])
+        cred.is_connected = True
+        db.session.commit()
+        
+        return render_template('cloud_callback.html', success=True, provider=provider)
+    except Exception as e:
+        logger.error(f"OAuth callback error for {provider}: {e}")
+        return render_template('cloud_callback.html', success=False, error=str(e), provider=provider)
+
+
+@app.route('/api/cloud/<provider>/folders')
+@login_required
+def cloud_list_folders(provider):
+    """List folders in cloud storage"""
+    if provider not in ['google_drive', 'onedrive', 'dropbox']:
+        return jsonify({'error': 'Invalid provider'}), 400
+    
+    cred = CloudCredential.query.filter_by(provider=provider).first()
+    if not cred or not cred.is_connected:
+        return jsonify({'error': 'Not connected to ' + provider}), 400
+    
+    try:
+        from cloud_storage import get_cloud_manager
+        redirect_uri = request.host_url.rstrip('/') + f'/oauth/callback/{provider}'
+        manager = get_cloud_manager(provider, cred.client_id, cred.client_secret, redirect_uri)
+        manager.set_tokens(cred.access_token, cred.refresh_token, cred.token_expiry)
+        
+        folder_id = request.args.get('folder_id', None)
+        folders = manager.list_folders(folder_id)
+        
+        # Update tokens if refreshed
+        if manager.access_token != cred.access_token:
+            cred.access_token = manager.access_token
+            if manager.token_expiry:
+                cred.token_expiry = manager.token_expiry
+            db.session.commit()
+        
+        return jsonify({'folders': folders, 'parent_id': folder_id})
+    except Exception as e:
+        logger.error(f"Cloud folder listing error for {provider}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cloud/<provider>/disconnect', methods=['POST'])
+@login_required
+def cloud_disconnect(provider):
+    """Disconnect cloud provider"""
+    if provider not in ['google_drive', 'onedrive', 'dropbox']:
+        return jsonify({'error': 'Invalid provider'}), 400
+    
+    cred = CloudCredential.query.filter_by(provider=provider).first()
+    if cred:
+        cred.access_token = None
+        cred.refresh_token = None
+        cred.token_expiry = None
+        cred.is_connected = False
+        db.session.commit()
+    
+    return jsonify({'success': True})
+
+
+@app.route('/api/cloud/status')
+@login_required
+def cloud_status():
+    """Get connection status of all cloud providers"""
+    result = {}
+    for provider in ['google_drive', 'onedrive', 'dropbox']:
+        cred = CloudCredential.query.filter_by(provider=provider).first()
+        if cred:
+            result[provider] = {
+                'is_connected': cred.is_connected,
+                'has_credentials': bool(cred.client_id and cred.client_secret)
+            }
+        else:
+            result[provider] = {'is_connected': False, 'has_credentials': False}
+    return jsonify(result)
+
+
 # Function called by scheduler
 def run_scheduled_backup(site_id):
     """Run a scheduled backup (called by APScheduler)"""
@@ -612,6 +826,9 @@ def run_scheduled_backup(site_id):
                 history.file_count = file_count
                 history.size_bytes = total_bytes
                 logger.info(f"Backup completed for {site.name}: {file_count} files, {format_size(total_bytes)}")
+                
+                # Upload to cloud if configured
+                _upload_to_cloud(site, result)
             else:
                 history.status = 'failed'
                 history.error_message = result
