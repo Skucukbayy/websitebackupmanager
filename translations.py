@@ -6,7 +6,7 @@ TRANSLATIONS = {
         'dashboard': 'Dashboard',
         'add_new_site': 'Yeni Site Ekle',
         'edit_site': 'Site Düzenle',
-        'version': 'v1.0.1',
+        'version': 'v1.0.2',
         'copyright': '© 2024 Backup Manager',
         'cancel': 'İptal',
         'save': 'Kaydet',
@@ -140,7 +140,17 @@ TRANSLATIONS = {
         'go_up': 'Üst Dizin',
         'empty_directory': 'Boş dizin',
         'close': 'Kapat',
-        'error_details': 'Hata Detayı'
+        'error_details': 'Hata Detayı',
+        
+        # Admin Panel
+        'admin_panel': 'Yönetim Paneli',
+        'current_password': 'Mevcut Şifre',
+        'current_password_placeholder': 'Mevcut şifrenizi girin',
+        'current_password_wrong': 'Mevcut şifre yanlış',
+        'password_changed': 'Şifre başarıyla değiştirildi',
+        'system_info': 'Sistem Bilgisi',
+        'logged_in_as': 'Giriş yapan',
+        'server_time': 'Sunucu Saati'
     },
     'en': {
         # General
@@ -148,7 +158,7 @@ TRANSLATIONS = {
         'dashboard': 'Dashboard',
         'add_new_site': 'Add New Site',
         'edit_site': 'Edit Site',
-        'version': 'v1.0.1',
+        'version': 'v1.0.2',
         'copyright': '© 2024 Backup Manager',
         'cancel': 'Cancel',
         'save': 'Save',
@@ -282,6 +292,16 @@ TRANSLATIONS = {
         'go_up': 'Parent Directory',
         'empty_directory': 'Empty directory',
         'close': 'Close',
-        'error_details': 'Error Details'
+        'error_details': 'Error Details',
+        
+        # Admin Panel
+        'admin_panel': 'Admin Panel',
+        'current_password': 'Current Password',
+        'current_password_placeholder': 'Enter current password',
+        'current_password_wrong': 'Current password is incorrect',
+        'password_changed': 'Password changed successfully',
+        'system_info': 'System Information',
+        'logged_in_as': 'Logged in as',
+        'server_time': 'Server Time'
     }
 }

@@ -9,6 +9,7 @@ from functools import wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 import os
 from utils import init_encryption, encrypt_password, decrypt_password
+from time_utils import get_now_for_db
 
 # Configure logging
 logging.basicConfig(
@@ -377,12 +378,12 @@ def start_backup(site_id):
             history.status = 'failed'
             history.error_message = result
             
-        history.completed_at = datetime.utcnow()
+        history.completed_at = get_now_for_db()
         
         # Update schedule last_run
         schedule = BackupSchedule.query.filter_by(site_id=site.id).first()
         if schedule:
-            schedule.last_run = datetime.utcnow()
+            schedule.last_run = get_now_for_db()
         
         db.session.commit()
         
@@ -391,7 +392,7 @@ def start_backup(site_id):
     except Exception as e:
         history.status = 'failed'
         history.error_message = str(e)
-        history.completed_at = datetime.utcnow()
+        history.completed_at = get_now_for_db()
         db.session.commit()
         
         return jsonify({
@@ -515,6 +516,63 @@ def format_size(size):
         size /= 1024
     return f"{size:.2f} PB"
 
+
+# ============== Admin Panel ==============
+
+@app.route('/admin')
+@login_required
+def admin_page():
+    """Admin panel page"""
+    return render_template('admin.html')
+
+
+@app.route('/api/admin/change-password', methods=['POST'])
+@login_required
+def admin_change_password():
+    """Change password via admin panel (requires current password)"""
+    data = request.json
+    
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+    confirm_password = data.get('confirm_password', '')
+    
+    user = User.query.get(session['user_id'])
+    if not user:
+        return jsonify({'success': False, 'message': 'User not found'}), 404
+    
+    # Validate current password
+    if not user.check_password(current_password):
+        return jsonify({'success': False, 'message': 'current_password_wrong'}), 400
+    
+    # Validate new password
+    if len(new_password) < 4:
+        return jsonify({'success': False, 'message': 'password_too_short'}), 400
+    
+    if new_password != confirm_password:
+        return jsonify({'success': False, 'message': 'password_mismatch'}), 400
+    
+    if new_password == 'admin':
+        return jsonify({'success': False, 'message': 'password_same_as_default'}), 400
+    
+    user.set_password(new_password)
+    user.must_change_password = False
+    db.session.commit()
+    
+    logger.info(f"Password changed for user: {user.username} via admin panel")
+    return jsonify({'success': True, 'message': 'password_changed'})
+
+
+@app.route('/api/server-time')
+@login_required
+def get_server_time():
+    """Get current server time (NTP-synced)"""
+    from time_utils import get_now
+    now = get_now()
+    return jsonify({
+        'time': now.strftime('%d.%m.%Y %H:%M:%S'),
+        'iso': now.isoformat()
+    })
+
 # Function called by scheduler
 def run_scheduled_backup(site_id):
     """Run a scheduled backup (called by APScheduler)"""
@@ -559,18 +617,18 @@ def run_scheduled_backup(site_id):
                 history.error_message = result
                 logger.error(f"Backup failed for {site.name}: {result}")
                 
-            history.completed_at = datetime.utcnow()
+            history.completed_at = get_now_for_db()
             
             schedule = BackupSchedule.query.filter_by(site_id=site.id).first()
             if schedule:
-                schedule.last_run = datetime.utcnow()
+                schedule.last_run = get_now_for_db()
             
             db.session.commit()
             
         except Exception as e:
             history.status = 'failed'
             history.error_message = str(e)
-            history.completed_at = datetime.utcnow()
+            history.completed_at = get_now_for_db()
             db.session.commit()
             logger.error(f"Backup error for {site.name}: {e}")
 

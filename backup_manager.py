@@ -5,6 +5,7 @@ import ftplib
 import paramiko
 import logging
 from datetime import datetime
+from time_utils import get_now
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,7 @@ class SSHBackupManager:
                  raise Exception(f"Local backup path '{local_backup_path}' is not writable")
             
             # Create timestamped backup folder
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = get_now().strftime('%Y%m%d_%H%M%S')
             backup_dir = os.path.join(local_backup_path, f'backup_{timestamp}')
             
             os.makedirs(local_backup_path, exist_ok=True)
@@ -502,7 +503,7 @@ class FTPBackupManager:
                 raise Exception(f"Yerel yedekleme yolu '{local_backup_path}' yazılabilir değil")
 
             # Create timestamped backup folder
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = get_now().strftime('%Y%m%d_%H%M%S')
             backup_dir = os.path.join(local_backup_path, f'backup_{timestamp}')
             
             os.makedirs(local_backup_path, exist_ok=True)

@@ -1,4 +1,5 @@
 from datetime import datetime
+from time_utils import get_now_for_db
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -13,7 +14,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     must_change_password = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_now_for_db)
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -35,8 +36,8 @@ class Site(db.Model):
     ssh_key_path = db.Column(db.String(500), nullable=True)
     remote_path = db.Column(db.String(500), nullable=False, default='/')
     local_backup_path = db.Column(db.String(500), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_now_for_db)
+    updated_at = db.Column(db.DateTime, default=get_now_for_db, onupdate=get_now_for_db)
     is_active = db.Column(db.Boolean, default=True)
     
     # Relationships
@@ -78,7 +79,7 @@ class BackupSchedule(db.Model):
     next_run = db.Column(db.DateTime, nullable=True)
     last_run = db.Column(db.DateTime, nullable=True)
     is_enabled = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_now_for_db)
     
     def to_dict(self):
         return {
@@ -98,7 +99,7 @@ class BackupHistory(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     site_id = db.Column(db.Integer, db.ForeignKey('sites.id'), nullable=False)
-    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime, default=get_now_for_db)
     completed_at = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), default='running')  # running, success, failed
     size_bytes = db.Column(db.BigInteger, default=0)
