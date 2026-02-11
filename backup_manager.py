@@ -60,11 +60,13 @@ class SSHBackupManager:
                 self.sftp.close()
             except:
                 pass
+            self.sftp = None
         if self.client:
             try:
                 self.client.close()
             except:
                 pass
+            self.client = None
     
     def test_connection(self) -> Tuple[bool, str]:
         """Test SSH connection"""
@@ -321,6 +323,8 @@ class FTPBackupManager:
                     self.ftp.close()
                 except:
                     pass
+            self.ftp = None
+            self.use_tls = False
     
     def test_connection(self) -> Tuple[bool, str]:
         """Test FTP connection"""
@@ -378,7 +382,8 @@ class FTPBackupManager:
     def download_directory(self, remote_path: str, local_path: str,
                           progress_callback=None) -> Tuple[int, int]:
         """
-        Recursively download a directory via FTP
+        Recursively download a directory via FTP using absolute paths.
+        Does NOT use cwd() to avoid directory state corruption.
         Returns: (total_files, total_bytes)
         """
         total_files = 0
@@ -386,34 +391,44 @@ class FTPBackupManager:
         
         os.makedirs(local_path, exist_ok=True)
         
-        try:
-            self.ftp.cwd(remote_path)
-            logger.info(f"FTP dizin değiştirildi: {remote_path}")
-        except ftplib.error_perm as e:
-            logger.error(f"FTP dizine erişilemiyor {remote_path}: {e}")
-            return total_files, total_bytes
-        
         # Try MLSD first (more reliable), fallback to LIST
+        # Use absolute path instead of cwd()
         items = []
-        use_mlsd = False
         
         try:
-            mlsd_items = list(self.ftp.mlsd())
+            mlsd_items = list(self.ftp.mlsd(remote_path))
             for name, facts in mlsd_items:
                 if name in ['.', '..']:
                     continue
                 is_dir = facts.get('type') == 'dir'
                 items.append((name, is_dir))
-            use_mlsd = True
-            logger.info(f"MLSD kullanıldı, {len(items)} öğe bulundu")
+            logger.info(f"MLSD kullanıldı ({remote_path}), {len(items)} öğe bulundu")
         except:
-            # MLSD not supported, use LIST
-            logger.info("MLSD desteklenmiyor, LIST kullanılacak")
+            # MLSD not supported, use LIST with absolute path
+            logger.info(f"MLSD desteklenmiyor, LIST kullanılacak: {remote_path}")
+            
+            # We need to cwd for LIST, but we'll restore it after
+            try:
+                original_dir = self.ftp.pwd()
+            except:
+                original_dir = '/'
+            
+            try:
+                self.ftp.cwd(remote_path)
+            except ftplib.error_perm as e:
+                logger.error(f"FTP dizine erişilemiyor {remote_path}: {e}")
+                return total_files, total_bytes
+            
             lines = []
             try:
                 self.ftp.retrlines('LIST', lines.append)
             except Exception as e:
                 logger.error(f"LIST başarısız {remote_path}: {e}")
+                # Restore original directory before returning
+                try:
+                    self.ftp.cwd(original_dir)
+                except:
+                    pass
                 return total_files, total_bytes
             
             for line in lines:
@@ -421,7 +436,13 @@ class FTPBackupManager:
                 if filename:
                     items.append((filename, is_dir))
             
-            logger.info(f"LIST kullanıldı, {len(items)} öğe bulundu")
+            # Restore original directory after LIST
+            try:
+                self.ftp.cwd(original_dir)
+            except:
+                pass
+            
+            logger.info(f"LIST kullanıldı ({remote_path}), {len(items)} öğe bulundu")
         
         for filename, is_dir in items:
             remote_item_path = f"{remote_path}/{filename}"
@@ -429,18 +450,16 @@ class FTPBackupManager:
             
             try:
                 if is_dir:
-                    # Directory - recurse
+                    # Directory - recurse (no cwd needed, uses absolute paths)
                     files, bytes_downloaded = self.download_directory(
                         remote_item_path, local_item_path, progress_callback
                     )
                     total_files += files
                     total_bytes += bytes_downloaded
-                    # Go back to parent directory
-                    self.ftp.cwd(remote_path)
                 else:
-                    # File - download
+                    # File - download using absolute path
                     with open(local_item_path, 'wb') as f:
-                        self.ftp.retrbinary(f'RETR {filename}', f.write)
+                        self.ftp.retrbinary(f'RETR {remote_item_path}', f.write)
                     
                     file_size = os.path.getsize(local_item_path)
                     total_files += 1
@@ -449,7 +468,7 @@ class FTPBackupManager:
                     if progress_callback:
                         progress_callback(filename, file_size)
                     
-                    logger.debug(f"İndirildi: {filename} ({file_size} bytes)")
+                    logger.debug(f"İndirildi: {remote_item_path} ({file_size} bytes)")
                         
             except Exception as e:
                 logger.error(f"FTP indirme hatası {remote_item_path}: {type(e).__name__}: {e}")
@@ -471,9 +490,9 @@ class FTPBackupManager:
             return False, message, 0, 0
         
         try:
-            # 1. Validate Remote Path
+            # 1. Validate Remote Path (use nlst instead of cwd to avoid state change)
             try:
-                self.ftp.cwd(remote_path)
+                self.ftp.nlst(remote_path)
                 logger.info(f"Uzak dizin doğrulandı: {remote_path}")
             except ftplib.error_perm as e:
                 raise Exception(f"Uzak yol '{remote_path}' mevcut değil veya erişim izni yok: {e}")
